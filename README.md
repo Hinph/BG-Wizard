@@ -1,4 +1,4 @@
-BT-Wizard is a powerful composition tool designed primarily for creating custom composite background images for MiSTer FPGA frontends. It can build artwork using either an ES-DE gamelist.xml or a standard ROM folder, automatically matching games with artwork from multiple media directories (screenshots, box art, physical media, logos, title screens, and more) to generate fully customized backgrounds.
+BT-Wizard is a tool designed primarily for creating custom composite background images for MiSTer FPGA frontends. It can build artwork using either an ES-DE gamelist.xml or a standard ROM folder, automatically matching games with artwork from multiple media directories (screenshots, box art, physical media, logos, title screens, and more) to generate fully customized backgrounds.
 
 When using an ES-DE XML file as the source, BT-Wizard can also extract game metadata and seamlessly incorporate it into the final image. Information such as the release year, genre, publisher, developer, player count, and average user rating can be baked directly into the artwork.
 
