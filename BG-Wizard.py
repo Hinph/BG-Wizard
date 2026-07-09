@@ -36,12 +36,14 @@ def player_count(player_str):
     except:
         return 1
 
-def player_width(player_str, scale=1, use_text=False):
-    if use_text:
+def player_width(player_str, scale=1, use_text=False, icon_style="Classic"):
+    if use_text or icon_style == "Players as Text":
         return 40
     p_count = player_count(player_str)
     icon_w = int(9 * scale)
     gap = int(4 * scale)
+    if icon_style == "Custom Icon":
+        icon_w = int(icon_w * 2.0)
     return (p_count * icon_w) + ((p_count - 1) * gap)
 
 def rating_width(rating, use_stars, scale=1):
@@ -60,11 +62,11 @@ def draw_gauge(draw, right_x, y, raw_rating, scale=1):
         draw.rectangle([xs, y, xs+fw, y+gh], fill=col)
     return gw
 
-def draw_stars(draw, right_x, y, rating, scale=1):
+def draw_stars(draw, right_x, y, rating, scale=1, style="Classic Filled", color=(255, 215, 0), spacing_mult=1.0):
     sw = stars_width(rating, scale)
     if sw == 0: return 0
     stars = int(float(rating) * 5)
-    spacing = int(22 * scale)
+    spacing = int(22 * scale * spacing_mult)
     font_size = max(10, int(16 * scale))
     try:
         star_font = ImageFont.truetype(resource_path("DejaVuSans-Bold.ttf"), font_size)
@@ -72,12 +74,24 @@ def draw_stars(draw, right_x, y, rating, scale=1):
         star_font = ImageFont.load_default()
     for i in range(5):
         x = right_x - (5 - i) * spacing
-        color = (255, 215, 0) if i < stars else (100, 100, 100)
-        draw.text((x, y-2), "★", fill=color, font=star_font)
+        if style == "Outlined (★/☆)":
+            ch = "★" if i < stars else "☆"
+            fill_c = color if i < stars else (160, 160, 160)
+            # Draw outline (black shadow/outline for retro CRT look)
+            for ox, oy in [(-1,0),(1,0),(0,-1),(0,1), (-1,-1),(-1,1),(1,-1),(1,1)]:
+                draw.text((x+ox, y+oy-2), ch, font=star_font, fill=(0,0,0))
+            draw.text((x, y-2), ch, fill=fill_c, font=star_font)
+        else:  # Classic Filled (default)
+            ch = "★"
+            fill_c = color if i < stars else (100, 100, 100)
+            # subtle outline for filled too for consistency
+            for ox, oy in [(-1,0),(1,0),(0,-1),(0,1)]:
+                draw.text((x+ox, y+oy-2), ch, font=star_font, fill=(0,0,0))
+            draw.text((x, y-2), ch, fill=fill_c, font=star_font)
     return sw
 
-def draw_player(draw, right_x, y, player_str, scale=1, use_text=False):
-    if use_text:
+def draw_player(draw, img, right_x, y, player_str, scale=1, use_text=False, icon_style="Classic", custom_icon_path=None):
+    if use_text or icon_style == "Players as Text":
         p_count = player_count(player_str)
         text = f"{p_count}P"
         font_size = max(10, int(14 * scale))
@@ -92,10 +106,39 @@ def draw_player(draw, right_x, y, player_str, scale=1, use_text=False):
     gap = int(4 * scale)
     total_w = (p_count * icon_w) + ((p_count - 1) * gap)
     start_x = right_x - total_w
+    fill = (255, 255, 255)
+    if icon_style == "Custom Icon" and custom_icon_path and os.path.exists(custom_icon_path):
+        try:
+            custom_icon_w = int(icon_w * 2.0)
+            picon = Image.open(custom_icon_path).convert("RGBA").resize((custom_icon_w, custom_icon_w), Image.LANCZOS)
+            total_w = (p_count * custom_icon_w) + ((p_count - 1) * gap) if p_count > 0 else 0
+            start_x = right_x - total_w
+            for i in range(p_count):
+                x = start_x + (i * (custom_icon_w + gap))
+                offset = (custom_icon_w - icon_w) // 2
+                img.paste(picon, (x - offset, y - offset), picon)
+            return total_w
+        except Exception:
+            pass
     for i in range(p_count):
         x = start_x + (i * (icon_w + gap))
-        draw.ellipse([x, y, x + icon_w, y + icon_w], fill=(255, 255, 255))
-        draw.rectangle([x + 2, y + icon_w + 1, x + icon_w - 2, y + icon_w + 6], fill=(255, 255, 255))
+        if icon_style == "X":
+            cx = x + icon_w // 2
+            cy = y + icon_w // 2
+            r = max(2, icon_w // 2 - 1)
+            lw = max(1, int(1.5 * scale))
+            draw.line([cx - r, cy - r, cx + r, cy + r], fill=fill, width=lw)
+            draw.line([cx - r, cy + r, cx + r, cy - r], fill=fill, width=lw)
+        elif icon_style == "Dots":
+            r = max(2, icon_w // 3)
+            cx = x + icon_w // 2
+            cy = y + icon_w // 2
+            draw.ellipse([cx - r, cy - r, cx + r, cy + r], fill=fill)
+        elif icon_style == "Circles":
+            draw.ellipse([x + 1, y + 1, x + icon_w - 1, y + icon_w - 1], outline=fill, width=max(1, int(1.5 * scale)))
+        else:
+            draw.ellipse([x, y, x + icon_w, y + icon_w], fill=fill)
+            draw.rectangle([x + 2, y + icon_w + 1, x + icon_w - 2, y + icon_w + 6], fill=fill)
     return total_w
 
 def load_gamelist(xml_path):
@@ -169,6 +212,8 @@ def _dashed_rect(draw, box, color, width, dash=10, gap=6):
 
 def draw_border(draw, box, style, color, width, radius):
     x0, y0, x1, y1 = box
+    if style == "None" or width <= 0:
+        return
     if style == "Square":
         draw.rectangle(box, outline=color, width=width)
     elif style == "Dashed":
@@ -178,9 +223,16 @@ def draw_border(draw, box, style, color, width, radius):
         thin = max(1, width // 2)
         draw.rounded_rectangle(box, radius=radius, outline=color, width=thin)
         draw.rounded_rectangle([x0 + inset, y0 + inset, x1 - inset, y1 - inset], radius=max(2, radius - inset), outline=color, width=thin)
+    elif style == "Double Square":
+        inset = width + 3
+        thin = max(1, width // 2)
+        draw.rectangle(box, outline=color, width=thin)
+        draw.rectangle([x0 + inset, y0 + inset, x1 - inset, y1 - inset], outline=color, width=thin)
+    elif style == "Dashed Square":
+        _dashed_rect(draw, box, color, width)
     elif style in ["Glow", "Neon", "Emboss"]:
         for i in range(4, 0, -1):
-            alpha = int(color[3] * (i / 14))
+            alpha = int(color[3] * (i / 14)) if len(color) > 3 else 180
             glow_color = (*color[:3], max(0, alpha))
             expand = i * 3
             draw.rounded_rectangle([x0 - expand, y0 - expand, x1 + expand, y1 + expand], radius=radius + expand, outline=glow_color, width=width)
@@ -209,6 +261,9 @@ def create_fill_overlay(size, color1, color2=None, gradient_dir="vertical", text
     d = ImageDraw.Draw(overlay)
     w, h = size
     
+    if pattern:
+        pattern = str(pattern).lower().strip()
+    
     if texture_path and os.path.exists(texture_path):
         try:
             tex = Image.open(texture_path).convert("RGBA")
@@ -218,16 +273,34 @@ def create_fill_overlay(size, color1, color2=None, gradient_dir="vertical", text
             pass
     
     if color2 and gradient_dir:
-        for y in range(h):
-            if gradient_dir == "vertical":
-                ratio = y / h
-            else:
-                ratio = y / h if gradient_dir == "horizontal" else 0.5
-            r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
-            g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
-            b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
-            a = int(color1[3] * (1 - ratio) + color2[3] * ratio) if len(color1)>3 and len(color2)>3 else color1[3] if len(color1)>3 else 255
-            d.line([(0, y), (w, y)], fill=(r, g, b, a))
+        if gradient_dir == "vertical":
+            sh = max(h, 1)
+            strip = Image.new("RGBA", (1, sh), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(strip)
+            for y in range(sh):
+                ratio = y / (sh - 1) if sh > 1 else 0.0
+                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+                a1 = color1[3] if len(color1) > 3 else 255
+                a2 = color2[3] if len(color2) > 3 else 255
+                a = int(a1 * (1 - ratio) + a2 * ratio)
+                sd.point((0, y), fill=(r, g, b, a))
+            overlay = strip.resize((w, h), Image.LANCZOS)
+        else:
+            sw = max(w, 1)
+            strip = Image.new("RGBA", (sw, 1), (0, 0, 0, 0))
+            sd = ImageDraw.Draw(strip)
+            for x in range(sw):
+                ratio = x / (sw - 1) if sw > 1 else 0.0
+                r = int(color1[0] * (1 - ratio) + color2[0] * ratio)
+                g = int(color1[1] * (1 - ratio) + color2[1] * ratio)
+                b = int(color1[2] * (1 - ratio) + color2[2] * ratio)
+                a1 = color1[3] if len(color1) > 3 else 255
+                a2 = color2[3] if len(color2) > 3 else 255
+                a = int(a1 * (1 - ratio) + a2 * ratio)
+                sd.point((x, 0), fill=(r, g, b, a))
+            overlay = strip.resize((w, h), Image.LANCZOS)
     else:
         d.rectangle([0,0,w,h], fill=color1)
     
@@ -287,6 +360,28 @@ def create_fill_overlay(size, color1, color2=None, gradient_dir="vertical", text
                     points.append((cx + hex_size * math.cos(ang), cy + hex_size * math.sin(ang)))
                 d.polygon(points, outline=color2[:3] if color2 else (color1[0], color1[1], color1[2], 90), width=1)
     
+    elif pattern == "scanlines":
+        scan_col = tuple(color2[:3]) + (70,) if color2 and len(color2) > 2 else (180, 180, 200, 70)
+        for yy in range(0, h, 3):
+            d.line([(0, yy), (w, yy)], fill=scan_col, width=1)
+    elif pattern == "crosshatch":
+        hatch_col = tuple(color2[:3]) + (60,) if color2 and len(color2) > 2 else (200, 200, 180, 60)
+        for i in range(-h, w + h, 28):
+            d.line([(i, 0), (i + h, h)], fill=hatch_col, width=1)
+            d.line([(i, h), (i + h, 0)], fill=hatch_col, width=1)
+    elif pattern == "waves":
+        wave_col = tuple(color2[:3]) + (55,) if color2 and len(color2) > 2 else (160, 170, 220, 55)
+        for yy in range(0, h, 7):
+            pts = [(xx, yy + int(4 * math.sin((xx + yy * 0.6) / 14.0))) for xx in range(0, w + 1, 6)]
+            if len(pts) > 1:
+                d.line(pts, fill=wave_col, width=1)
+    elif pattern == "lattice":
+        lat_col = tuple(color2[:3]) + (45,) if color2 and len(color2) > 2 else (120, 120, 140, 45)
+        step = 22
+        for yy in range(0, h, step):
+            for xx in range(0, w, step):
+                d.rectangle([xx + 3, yy + 3, xx + step - 3, yy + step - 3], outline=lat_col, width=1)
+    
     return overlay
 
 def draw_rounded_with_fill(img, box, fill_img, radius, border_color=None, border_width=0, border_style="Solid"):
@@ -338,7 +433,8 @@ def draw_description_box(img, x, y, w, h, description, box_color, border_color, 
     
     fill_color1 = box_color
     fill_color2 = color2 or (*[int(c*0.7) for c in box_color[:3]], box_color[3]) 
-    fill_overlay = create_fill_overlay((w, actual_h), fill_color1, fill_color2 if gradient else None, "vertical", texture, pattern)
+    grad_dir = "vertical" if gradient else None
+    fill_overlay = create_fill_overlay((w, actual_h), fill_color1, fill_color2, grad_dir, texture, pattern)
     
     draw_rounded_with_fill(overlay, [x, y, x+w, y+actual_h], fill_overlay, radius, border_color, border_width, border_style)
     
@@ -356,8 +452,10 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
                       corner_radius, shadow, padding_scale, font, use_stars, text_scale, 
                       gradient=False, color2=None, texture=None, pattern=None, text_outline=True, 
                       vertical=False, use_player_text=False, bar_x_var=None, bar_y_var=None,
-                      text_color=(255,255,255), custom_font_path=None):
-    # Create properly scaled font for main text so text_scale affects everything equally
+                      text_color=(255,255,255), custom_font_path=None, vertical_labels=False,
+                      player_icon_style="Classic", bar_height=None, custom_player_icon_path=None,
+                      display_rating_as_text=False, star_style="Classic Filled", star_color=(255, 215, 0),
+                      star_spacing_mult=1.0, vertical_player_gap_mult=1.0):
     main_font_size = max(9, int(13 * text_scale))
     font_path = custom_font_path if (custom_font_path and os.path.exists(custom_font_path)) else resource_path("DejaVuSans-Bold.ttf")
     try:
@@ -369,8 +467,12 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
     icon_gap = int(10 * text_scale * padding_scale)
     text_gap = int(12 * text_scale * padding_scale)
     v_pad = int(8 * text_scale * padding_scale)
-    rw = rating_width(meta.get("rating"), use_stars, text_scale)
-    pw = player_width(meta.get("players", "1"), text_scale, use_player_text)
+    raw_r = meta.get("rating")
+    if display_rating_as_text and raw_r:
+        rw = int(55 * text_scale)
+    else:
+        rw = rating_width(raw_r, use_stars, text_scale)
+    pw = player_width(meta.get("players", "1"), text_scale, use_player_text, player_icon_style)
     right_block_w = pw + (icon_gap if rw else 0) + rw
     
     meas = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
@@ -378,23 +480,66 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
     dev = cleanup_name(meta.get("developer", "Unknown"))
     year = meta.get("year", "----")
     genre = meta.get("genre", "Unknown")
-    players = f"{player_count(meta.get('players', '1'))}P"
+    players_raw = meta.get("players", "1") or "1"
+    players_display = f"{players_raw} Players"
     
     if vertical:
-        text_lines = [
-            f"{year}",
-            f"{genre}",
-            f"{pub}",
-            f"{dev}",
-            players
-        ]
-        bar_w = 240
-        line_height = 26
-        h = len(text_lines) * line_height + inner_pad * 2 + 50
-        w = bar_w
+        if vertical_labels:
+            # Two column layout for nice alignment
+            labels = ["Year:", "Genre:", "Publisher:", "Developer:"]
+            values = [year, genre, pub, dev]
+            # measure max label width
+            max_label_w = 0
+            label_widths = []
+            for lab in labels:
+                tw = meas.textlength(lab, font=main_font)
+                label_widths.append(tw)
+                if tw > max_label_w:
+                    max_label_w = tw
+            value_start_x = inner_pad + max_label_w + int(8 * text_scale)
+            text_lines_for_height = labels  # for height calc
+        else:
+            text_lines = [
+                year,
+                genre,
+                pub,
+                dev,
+            ]
+            if use_player_text:
+                text_lines.append(players_display)
+            text_lines_for_height = text_lines
+        # Dynamic width
+        max_text_w = 0
+        if vertical_labels:
+            for i, (lab, val) in enumerate(zip(labels, values)):
+                tw = label_widths[i] + int(8 * text_scale) + meas.textlength(val, font=main_font)
+                if tw > max_text_w:
+                    max_text_w = tw
+        else:
+            for line in text_lines_for_height:
+                tw = meas.textlength(line, font=main_font)
+                if tw > max_text_w:
+                    max_text_w = tw
+        rw = rating_width(meta.get("rating"), use_stars, text_scale) if meta.get("rating") else 0
+        content_w = max(max_text_w, rw)
+        bar_w = content_w + inner_pad * 2 + int(6 * text_scale)
+        w = max(140, int(bar_w))
+        try:
+            bbox = meas.textbbox((0, 0), "Ay", font=main_font)
+            lh = bbox[3] - bbox[1] + int(5 * text_scale)
+        except:
+            lh = int(20 * text_scale)
+        line_height = max(16, int(lh))
+        extra_rating = int(32 * text_scale)
+        if vertical_labels and meta.get("rating"):
+            extra_rating += int(14 * text_scale)
+        if player_icon_style != "Players as Text" and meta.get("players"):
+            extra_rating += int(26 * text_scale)  # more spacing
+        h = len(text_lines_for_height) * line_height + inner_pad * 2 + extra_rating
         x = bar_x_var.get() if bar_x_var else x
         y = bar_y_var.get() if bar_y_var else y
     else:
+        players = f"{player_count(meta.get('players', '1'))}P"
         text_lines = [
             f"{year}",
             f"{genre}",
@@ -418,6 +563,13 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
         icon_row_h = max(int(14 * text_scale), int(9 * text_scale) + 4)
         h = max(text_h, icon_row_h) + v_pad * 2
     
+    if bar_height is not None:
+        try:
+            min_h = int(float(bar_height) * max(0.8, float(text_scale)))
+            h = max(h, min_h)
+        except:
+            pass
+    
     radius = max(0, min(corner_radius, w // 2, h // 2))
     
     overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
@@ -432,7 +584,8 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
     
     fill_color1 = bar_color
     fill_color2 = color2 or (*[int(c*0.6) for c in bar_color[:3]], bar_color[3])
-    fill_overlay = create_fill_overlay((w, h), fill_color1, fill_color2 if gradient else None, "vertical", texture, pattern)
+    grad_dir = "vertical" if gradient else None
+    fill_overlay = create_fill_overlay((w, h), fill_color1, fill_color2, grad_dir, texture, pattern)
     
     draw_rounded_with_fill(overlay, [x, y, x+w, y+h], fill_overlay, radius, border_color, border_width, border_style)
     
@@ -441,27 +594,65 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
     td = ImageDraw.Draw(img)
     if vertical:
         text_y = y + inner_pad
-        for line in text_lines:
-            draw_crt_text(td, (x + inner_pad, text_y), line, main_font, fill=text_color, outline=text_outline)
-            text_y += line_height
-        row_y = text_y + 10
-        right_edge = x + w - inner_pad
-        if use_stars:
-            drawn_rw = draw_stars(td, right_edge, row_y, meta.get("rating"), text_scale)
+        if vertical_labels:
+            for i, (lab, val) in enumerate(zip(labels, values)):
+                # label
+                draw_crt_text(td, (x + inner_pad, text_y), lab, main_font, fill=text_color, outline=text_outline)
+                # value aligned
+                draw_crt_text(td, (x + value_start_x, text_y), val, main_font, fill=text_color, outline=text_outline)
+                text_y += line_height
         else:
-            drawn_rw = draw_gauge(td, right_edge, row_y, meta.get("rating"), text_scale)
+            for line in text_lines:
+                draw_crt_text(td, (x + inner_pad, text_y), line, main_font, fill=text_color, outline=text_outline)
+                text_y += line_height
+        # Rating
+        row_y = text_y + int(8 * text_scale)
+        center_x = x + w // 2
+        if meta.get("rating"):
+            if display_rating_as_text:
+                rt = f"{int(float(meta.get('rating', 0)) * 100)}%"
+                try:
+                    rfont_size = max(8, int(10 * text_scale))
+                    rfont = ImageFont.truetype(font_path, rfont_size)
+                except Exception:
+                    rfont = main_font
+                tw = meas.textlength(rt, font=rfont) if 'meas' in locals() else 50
+                draw_crt_text(td, (center_x - tw // 2, row_y), rt, rfont, fill=text_color, outline=text_outline)
+            else:
+                if use_stars:
+                    sw = stars_width(meta.get("rating"), text_scale)
+                    draw_stars(td, center_x + sw // 2, row_y, meta.get("rating"), text_scale, style=star_style, color=star_color, spacing_mult=star_spacing_mult)
+                else:
+                    gw = gauge_width(meta.get("rating"), text_scale)
+                    draw_gauge(td, center_x + gw // 2, row_y, meta.get("rating"), text_scale)
+        # Player icons with MORE spacing
+        if player_icon_style != "Players as Text":
+            p_y = row_y + int(26 * text_scale * vertical_player_gap_mult)
+            p_str = meta.get("players", "1")
+            pw = player_width(p_str, text_scale, use_text=(player_icon_style == "Players as Text"), icon_style=player_icon_style)
+            draw_player(td, img, center_x + pw // 2, p_y, p_str, text_scale, use_text=False, icon_style=player_icon_style, custom_icon_path=custom_player_icon_path)
     else:
         text_y = y + (h - text_h) // 2 - text_bbox[1] if 'text' in locals() else y + inner_pad
         if 'text' in locals():
             draw_crt_text(td, (x + inner_pad, text_y), text, main_font, fill=text_color, outline=text_outline)
         right_edge = x + w - inner_pad
         row_y = y + (h - icon_row_h) // 2
-        if use_stars:
-            drawn_rw = draw_stars(td, right_edge, row_y, meta.get("rating"), text_scale)
+        if display_rating_as_text and meta.get("rating"):
+            rt = f"{int(float(meta.get('rating', 0)) * 100)}%"
+            try:
+                rfont_size = max(8, int(10 * text_scale))
+                rfont = ImageFont.truetype(font_path, rfont_size)
+            except Exception:
+                rfont = main_font
+            tw = meas.textlength(rt, font=rfont) if 'meas' in locals() else 45
+            draw_crt_text(td, (right_edge - tw, row_y - 2), rt, rfont, fill=text_color, outline=text_outline)
+            drawn_rw = tw
+        elif use_stars:
+            drawn_rw = draw_stars(td, right_edge, row_y, meta.get("rating"), text_scale, style=star_style, color=star_color, spacing_mult=star_spacing_mult)
         else:
             drawn_rw = draw_gauge(td, right_edge, row_y, meta.get("rating"), text_scale)
         gap = icon_gap if drawn_rw else 0
-        draw_player(td, right_edge - drawn_rw - gap, row_y, meta.get("players", "1"), text_scale, use_player_text)
+        draw_player(td, img, right_edge - drawn_rw - gap, row_y, meta.get("players", "1"), text_scale, use_text=(player_icon_style == "Players as Text"), icon_style=player_icon_style, custom_icon_path=custom_player_icon_path)
 
 class App(tk.Tk):
     def __init__(self):
@@ -494,8 +685,9 @@ class App(tk.Tk):
         style.configure("Horizontal.TScale", background=BG, troughcolor=FIELD)
         style.configure("TProgressbar", background=ACCENT, troughcolor=FIELD)
         style.configure("Section.TLabel", font=("TkDefaultFont", 9, "bold"), foreground="#5b8cff")
+        style.configure("DarkBlue.TButton", background="#1e5a8a", foreground="#ffffff", padding=3, borderwidth=0, font=("TkDefaultFont", 9))
+        style.map("DarkBlue.TButton", background=[("active", "#163d5e")])
 
-        # Set app icon - always prefer icon.png next to the script (or bundled), else generate retro fallback
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             icon_path = os.path.join(script_dir, "icon.png")
@@ -506,7 +698,6 @@ class App(tk.Tk):
             else:
                 icon_img = Image.new("RGBA", (64, 64), (25, 25, 35, 255))
                 idraw = ImageDraw.Draw(icon_img)
-                # Retro CRT / controller style icon
                 idraw.rounded_rectangle([6, 6, 58, 40], radius=5, fill=(60, 120, 255), outline=(180, 210, 255), width=2)
                 idraw.rectangle([12, 12, 52, 34], fill=(15, 20, 35))
                 for y in range(15, 33, 3):
@@ -518,7 +709,7 @@ class App(tk.Tk):
             self.iconphoto(True, icon_photo)
             self._icon_ref = icon_photo
         except Exception as e:
-            print("Icon load warning:", e)  # icon is optional
+            print("Icon load warning:", e)
 
         self.paths = {"xml": tk.StringVar(), "ss": tk.StringVar(), "md": tk.StringVar(), "out": tk.StringVar(), "roms": tk.StringVar(), "optional_media": tk.StringVar()}
         self.path_enabled = {
@@ -526,7 +717,7 @@ class App(tk.Tk):
             "ss": tk.BooleanVar(value=True),
             "md": tk.BooleanVar(value=True),
             "roms": tk.BooleanVar(value=False),
-            "optional_media": tk.BooleanVar(value=False),
+            "optional_media": tk.BooleanVar(value=True),
         }
         self.plain_bg = tk.BooleanVar(value=False)
         self.use_custom_bg = tk.BooleanVar(value=False)
@@ -535,12 +726,14 @@ class App(tk.Tk):
         self.optimize = tk.BooleanVar(value=True)
         self.bg_color = (30, 30, 40, 255)
         self.bar_rgb = (25, 45, 90)
+        self.bar_color2 = (35, 55, 105, 255)
+        self.desc_color2 = (35, 55, 105, 255)
         self.border_color = (255, 255, 255, 220)
         self.desc_rgb = (25, 45, 90)
         self.desc_border_color = (255, 255, 255, 220)
         self.desc_text_color = (255, 255, 255)
-        self.text_color = (255, 255, 255)  # Metadata text color (pure when no outline)
-        self.border_width_map = {"Small": 2, "Medium": 4, "Large": 7}
+        self.text_color = (255, 255, 255)
+        self.border_width_map = {"Very Thin": 1, "Small": 2, "Medium": 4, "Large": 7}
         self.corner_radius_map = {"Sharp": 0, "Slight": 4, "Rounded": 10, "Strong": 20, "Pill": 999}
         self.padding_map = {"Compact": 0.75, "Normal": 1.0, "Spacious": 1.35}
         self.dim_map = {
@@ -551,7 +744,12 @@ class App(tk.Tk):
         }
         self.custom_font = None
         self.desc_custom_font = None
-        self.use_stars = tk.BooleanVar(value=False)
+        self.use_stars = tk.BooleanVar(value=False)  # False = stars (default). Checkbox checked = use gauge instead
+        self.display_rating_as_text = tk.BooleanVar(value=False)
+        self.star_style = tk.StringVar(value="Classic Filled")
+        self.star_color = (255, 215, 0)
+        self.star_spacing_mult = tk.DoubleVar(value=1.0)  # NEW: star spacing control
+        self.vertical_player_gap_mult = tk.DoubleVar(value=1.15)  # NEW: extra gap in vertical between rating & players
         self.bar_shadow = tk.BooleanVar(value=True)
         self.media_shadow = tk.BooleanVar(value=True)
         self.use_description = tk.BooleanVar(value=False)
@@ -559,6 +757,7 @@ class App(tk.Tk):
         self.text_shadow = tk.BooleanVar(value=True)
         self.use_player_text = tk.BooleanVar(value=False)
         self.bar_vertical = tk.BooleanVar(value=False)
+        self.vertical_labels = tk.BooleanVar(value=False)
         self.bg_mosaic = tk.BooleanVar(value=False)
         self.bg_gradient = tk.BooleanVar(value=False)
         self.bar_gradient = tk.BooleanVar(value=False)
@@ -569,35 +768,39 @@ class App(tk.Tk):
         self.bg_pattern = tk.StringVar(value="None")
         self.bar_pattern = tk.StringVar(value="None")
         self.desc_pattern = tk.StringVar(value="None")
+        self.desc_border_strength = tk.StringVar(value="Very Thin")
+        self.desc_border_style = tk.StringVar(value="Solid")
+        self.desc_corner_radius_choice = tk.StringVar(value="Slight")
+        self.desc_text_outline = tk.BooleanVar(value=True)
         self.additional_image = None
         self.additional_scale = tk.DoubleVar(value=0.6)
         self.additional_x = tk.DoubleVar(value=100)
         self.additional_y = tk.DoubleVar(value=100)
-        self.additional_shadow = tk.BooleanVar(value=False)  # FIXED: disabled by default
+        self.additional_shadow = tk.BooleanVar(value=False)
         self.additional_alpha = tk.IntVar(value=100)
-        # Second Additional Image (duplicated controls)
         self.enable_additional2 = tk.BooleanVar(value=False)
         self.additional2_image = None
         self.additional2_scale = tk.DoubleVar(value=0.5)
         self.additional2_x = tk.DoubleVar(value=200)
         self.additional2_y = tk.DoubleVar(value=150)
-        self.additional2_shadow = tk.BooleanVar(value=False)  # FIXED: disabled by default
+        self.additional2_shadow = tk.BooleanVar(value=False)
         self.additional2_alpha = tk.IntVar(value=80)
-        # Optional Media overlay (from Optional Media Folder, independent of Physical Media)
-        self.enable_optional_media = tk.BooleanVar(value=False)  # FIXED: disabled by default
+        self.enable_optional_media = tk.BooleanVar(value=False)
         self.opt_media_x = tk.DoubleVar(value=30)
         self.opt_media_y = tk.DoubleVar(value=30)
         self.opt_media_shadow = tk.BooleanVar(value=True)
         self.opt_media_alpha = tk.IntVar(value=90)
-        self.bar_x_var = tk.DoubleVar(value=0)  # Will be centered dynamically
+        self.bar_x_var = tk.DoubleVar(value=0)
         self.bar_y_var = tk.DoubleVar(value=80)
+        self.bar_height_var = tk.DoubleVar(value=40)
+        self.player_icon_style = tk.StringVar(value="Classic")
+        self.custom_player_icon = None
 
-        # Layer order for preview: first item in list = top layer (drawn last). Use Move Up/Down or drag in listbox.
         self.layer_order = ["additional", "additional2", "optional_media", "media", "metadata", "description"]
 
         self.text_scale_var = tk.DoubleVar(value=1.0)
         self.bar_w = tk.DoubleVar(value=700)
-        self.bar_y = tk.DoubleVar(value=60)  # legacy?
+        self.bar_y = tk.DoubleVar(value=60)
         self.bar_alpha_pct = tk.IntVar(value=82)
         self.desc_w = tk.DoubleVar(value=320)
         self.desc_h = tk.DoubleVar(value=220)
@@ -610,17 +813,16 @@ class App(tk.Tk):
         self.custom_suffix = tk.StringVar(value="-BG")
         self.media_x = tk.DoubleVar(value=40)
         self.media_y = tk.DoubleVar(value=40)
-        self.media_alpha = tk.IntVar(value=100)  # Physical media transparency
+        self.media_alpha = tk.IntVar(value=100)
+        self.media_custom_size = tk.DoubleVar(value=168)
+        self.opt_media_custom_size = tk.DoubleVar(value=168)
 
-        # Resolution aware defaults
         self.current_res = "CRT (640x480)"
-        self.res_mode = None  # set later
+        self.res_mode = None
 
-        # === Top Bar: Progress + Big Green GENERATE button (visible on every tab) ===
         top_bar = ttk.Frame(self)
         top_bar.pack(fill='x', padx=6, pady=4)
 
-        # Big green Generate button (top right)
         style = ttk.Style(self)
         style.configure("BigGreen.TButton", background="#2e7d32", foreground="white", font=("TkDefaultFont", 10, "bold"), padding=6)
         style.map("BigGreen.TButton", background=[("active", "#1b5e20")])
@@ -628,11 +830,9 @@ class App(tk.Tk):
         self.generate_btn = ttk.Button(top_bar, text="GENERATE ALL", command=self.run, style="BigGreen.TButton")
         self.generate_btn.pack(side='right', padx=6)
 
-        # Progress bar on top bar
         self.progress = ttk.Progressbar(top_bar, length=420, mode="determinate")
         self.progress.pack(side='left', padx=6, fill='x', expand=True)
 
-        # Res mode + optimize on top bar too (to save vertical space)
         self.res_mode = ttk.Combobox(top_bar, values=["CRT (640x480)", "720p (1280x720)"], state="readonly", width=18)
         self.res_mode.current(0)
         self.res_mode.pack(side='left', padx=4)
@@ -652,14 +852,12 @@ class App(tk.Tk):
         self.create_additional_tab()
         self.create_preview_tab()
 
-        # Bottom info bar (smaller)
         desc_frame = ttk.Frame(self)
         desc_frame.pack(fill='x', padx=6, pady=2)
         self.tab_desc_label = ttk.Label(desc_frame, text="", wraplength=680, font=("TkDefaultFont", 7), foreground="#a0a0b0")
         self.tab_desc_label.pack(side='left')
         self.notebook.bind("<<NotebookTabChanged>>", self.update_tab_description)
 
-        # Initialize defaults for current res
         self.apply_res_defaults()
         self.update_preview()
 
@@ -675,13 +873,11 @@ class App(tk.Tk):
         W = 1280 if is_720p else 640
         H = 720 if is_720p else 480
         
-        # Center metadata bar by default, a little under top
         bar_w = min(750 if is_720p else 500, W - 80)
         self.bar_w.set(bar_w)
         self.bar_x_var.set( (W - bar_w) // 2 )
-        self.bar_y_var.set( max(25, int(H * 0.055)) )  # ~ a little under top
+        self.bar_y_var.set( max(25, int(H * 0.055)) )
         
-        # Reasonable defaults for other elements
         if is_720p:
             self.desc_w.set(380)
             self.desc_h.set(240)
@@ -705,37 +901,32 @@ class App(tk.Tk):
             self.text_scale_var.set(1.0)
             self.desc_font_scale.set(0.95)
 
-        # Clamp sliders max based on res? But since variables are shared, we update UI hints in labels later if needed.
-        # For now, just set reasonable values.
-
     def create_paths_tab(self):
         tab1 = ttk.Frame(self.notebook)
         self.notebook.add(tab1, text="Paths")
         ttk.Label(tab1, text="Select folders and files.", style="Section.TLabel").pack(anchor='w', padx=8, pady=4)
-        for key, label in zip(['xml', 'ss', 'md', 'out'], ['XML File (gamelist.xml)', 'Screenshots Folder', 'Physical Media Folder', 'Output Folder']):
+        for key, label in zip(['xml', 'ss', 'md', 'out'], ['XML File (gamelist.xml)', 'Background/Screenshot Folder', 'Physical Media Art Folder', 'Save Images to:']):
             f = ttk.Frame(tab1); f.pack(fill='x', padx=8, pady=3)
             ttk.Button(f, text=label, command=lambda k=key: self.pick(k), width=28).pack(side='left', padx=(0, 6))
             ttk.Label(f, textvariable=self.paths[key], relief="sunken", wraplength=380, foreground="#a0a0b0").pack(side='left', fill='x', padx=2)
-            if key in self.path_enabled:
-                ttk.Checkbutton(f, text="", variable=self.path_enabled[key], command=lambda k=key: self.on_path_toggle(k), width=2).pack(side='right', padx=(4, 0))
+            # Checkbox removed here
         
-        f = ttk.Frame(tab1); f.pack(fill='x', padx=8, pady=12)
-        ttk.Label(f, text="Generate from games folder (use filename/folder name as base) — mutually exclusive with XML above:", style="Section.TLabel").pack(anchor='w')
-        ttk.Button(f, text="Select Games Folder", command=lambda: self.pick('roms'), width=28).pack(side='left', padx=(0, 6))
-        ttk.Label(f, textvariable=self.paths['roms'], relief="sunken", wraplength=380, foreground="#a0a0b0").pack(side='left', fill='x', padx=2)
-        ttk.Checkbutton(f, text="", variable=self.path_enabled['roms'], command=lambda: self.on_path_toggle('roms'), width=2).pack(side='right', padx=(4, 0))
-
-        # Optional Media Folder (unchecked by default, merges with Physical Media for extra artwork matches)
         f = ttk.Frame(tab1); f.pack(fill='x', padx=8, pady=6)
         ttk.Label(f, text="Optional Media Folder (extra images; titlescreens, miximages, boxart, fanart, etc...):", style="Section.TLabel").pack(anchor='w')
         ttk.Button(f, text="Select Optional Media Folder", command=lambda: self.pick('optional_media'), width=28).pack(side='left', padx=(0, 6))
-        ttk.Label(f, textvariable=self.paths['optional_media'], relief="sunken", wraplength=380, foreground="#a0a0b0").pack(side='left', fill='x', padx=2)
-        ttk.Checkbutton(f, text="", variable=self.path_enabled['optional_media'], command=lambda: self.on_path_toggle('optional_media'), width=2).pack(side='right', padx=(4, 0))
+        self.opt_media_path_label = ttk.Label(f, textvariable=self.paths['optional_media'], relief="sunken", wraplength=380, foreground="#a0a0b0")
+        self.opt_media_path_label.pack(side='left', fill='x', padx=2)
+        # Checkbox removed here
 
-        # Output naming format - new feature
+        f = ttk.Frame(tab1); f.pack(fill='x', padx=8, pady=12)
+        ttk.Label(f, text="Generate from games folder. Use only if you are not using a gamelist.xml file (Metadata unavailable, use exact matching names for roms and image files):", style="Section.TLabel").pack(anchor='w')
+        ttk.Button(f, text="Select Games Folder", command=lambda: self.pick('roms'), width=28, style="DarkBlue.TButton").pack(side='left', padx=(0, 6))
+        ttk.Label(f, textvariable=self.paths['roms'], relief="sunken", wraplength=380, foreground="#a0a0b0").pack(side='left', fill='x', padx=2)
+        # Checkbox removed here
+
         naming_frame = ttk.LabelFrame(tab1, text="Output File Naming Format", padding=6)
         naming_frame.pack(fill='x', padx=8, pady=8)
-        ttk.Radiobutton(naming_frame, text="Superstation format:  [filename]-BG.png   (default)", variable=self.naming_mode, value="superstation", command=self.update_preview).pack(anchor='w', padx=4)
+        ttk.Radiobutton(naming_frame, text="Superstation format:  [filename]-BG.png", variable=self.naming_mode, value="superstation", command=self.update_preview).pack(anchor='w', padx=4)
         ttk.Radiobutton(naming_frame, text="ES-DE format:  [filename].png", variable=self.naming_mode, value="esde", command=self.update_preview).pack(anchor='w', padx=4)
         custom_row = ttk.Frame(naming_frame); custom_row.pack(fill='x', pady=2, padx=4)
         ttk.Radiobutton(custom_row, text="Custom suffix (e.g. -art or -overlay):", variable=self.naming_mode, value="custom", command=self.update_preview).pack(side='left')
@@ -743,7 +934,6 @@ class App(tk.Tk):
         self.custom_suffix_entry.pack(side='left', padx=6)
         ttk.Label(custom_row, text="→ filename + suffix + .png   (enter including - or . if wanted)", foreground="#888", font=("TkDefaultFont", 7)).pack(side='left', padx=4)
 
-        # Reset button on Paths page as requested
         ttk.Button(tab1, text="Reset All Settings to Defaults", command=self.reset_defaults, style="TButton").pack(pady=10)
 
     def create_background_tab(self):
@@ -762,10 +952,9 @@ class App(tk.Tk):
         pat_frame = ttk.Frame(tab2); pat_frame.pack(fill='x', padx=8, pady=4)
         ttk.Label(pat_frame, text="Background Pattern:").pack(side='left', padx=4)
         self.bg_pattern_combo = ttk.Combobox(pat_frame, textvariable=self.bg_pattern, 
-                                           values=["None", "Gradient", "Horizontal Gradient", "Diagonal", "Checkerboard", "Dots", "Stripes", "Grid", "Noise", "Bricks", "Hex"], state="readonly", width=18)
+                                           values=["None", "Gradient", "Horizontal Gradient", "Diagonal", "Checkerboard", "Dots", "Stripes", "Grid", "Noise", "Bricks", "Hex", "Scanlines", "Crosshatch", "Lattice"], state="readonly", width=18)
         self.bg_pattern_combo.pack(side='left', padx=4)
 
-        # Custom Background Image section
         custom_bg_frame = ttk.LabelFrame(tab2, text="Custom Background Image (overrides Screenshots/Plain)", padding=6)
         custom_bg_frame.pack(fill='x', padx=8, pady=6)
         ttk.Checkbutton(custom_bg_frame, text="Use Custom Background Image", variable=self.use_custom_bg, command=self.update_preview).pack(anchor='w', padx=2)
@@ -802,44 +991,97 @@ class App(tk.Tk):
         self.text_swatch = tk.Label(color_row, text=" ", bg=self._hex(self.text_color), relief="raised", width=3)
         self.text_swatch.pack(side='left', padx=2)
 
-        controls = ttk.Frame(tab3); controls.pack(fill='x', padx=8, pady=4)
-        f1 = ttk.Frame(controls); f1.pack(side='left', fill='x', expand=True)
-        ttk.Label(f1, text="Border:").pack(side='left')
-        self.border_strength = ttk.Combobox(f1, values=["Small", "Medium", "Large"], state="readonly", width=8)
+        border_frame = ttk.LabelFrame(tab3, text="Metadata Bar Border & Style (independent)", padding=6)
+        border_frame.pack(fill='x', padx=8, pady=6)
+
+        bf1 = ttk.Frame(border_frame); bf1.pack(side='left', fill='x', expand=True)
+        ttk.Label(bf1, text="Border:").pack(side='left')
+        self.border_strength = ttk.Combobox(bf1, values=["Very Thin", "Small", "Medium", "Large"], state="readonly", width=9)
         self.border_strength.current(0)
         self.border_strength.pack(side='left', padx=4)
+        self.border_strength.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
 
-        f2 = ttk.Frame(controls); f2.pack(side='left', fill='x', expand=True, padx=10)
-        ttk.Label(f2, text="Style:").pack(side='left')
-        self.border_style = ttk.Combobox(f2, values=["Solid", "Double", "Dashed", "Glow", "Neon", "Emboss", "Inset", "Bevel"], state="readonly", width=10)
-        self.border_style.current(0)
+        bf2 = ttk.Frame(border_frame); bf2.pack(side='left', fill='x', expand=True, padx=8)
+        ttk.Label(bf2, text="Style:").pack(side='left')
+        self.border_style = ttk.Combobox(bf2, values=["None", "Solid", "Square", "Double", "Dashed", "Glow"], state="readonly", width=11)
+        self.border_style.current(1)
         self.border_style.pack(side='left', padx=4)
+        self.border_style.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
 
-        f3 = ttk.Frame(controls); f3.pack(side='left', fill='x', expand=True)
-        ttk.Label(f3, text="Radius:").pack(side='left')
-        self.corner_radius_choice = ttk.Combobox(f3, values=list(self.corner_radius_map.keys()), state="readonly", width=8)
+        bf3 = ttk.Frame(border_frame); bf3.pack(side='left', fill='x', expand=True)
+        ttk.Label(bf3, text="Radius:").pack(side='left')
+        self.corner_radius_choice = ttk.Combobox(bf3, values=list(self.corner_radius_map.keys()), state="readonly", width=8)
         self.corner_radius_choice.current(1)
         self.corner_radius_choice.pack(side='left', padx=4)
+        self.corner_radius_choice.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
 
-        f4 = ttk.Frame(tab3); f4.pack(fill='x', padx=8, pady=2)
-        ttk.Label(f4, text="Padding:").pack(side='left')
-        self.padding_choice = ttk.Combobox(f4, values=list(self.padding_map.keys()), state="readonly", width=10)
+        bf4 = ttk.Frame(border_frame); bf4.pack(side='left', fill='x', expand=True, padx=8)
+        ttk.Label(bf4, text="Padding:").pack(side='left')
+        self.padding_choice = ttk.Combobox(bf4, values=list(self.padding_map.keys()), state="readonly", width=10)
         self.padding_choice.current(1)
         self.padding_choice.pack(side='left', padx=4)
+        self.padding_choice.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
 
-        ttk.Checkbutton(tab3, text="Bar Shadow", variable=self.bar_shadow).pack(anchor='w', padx=8, pady=2)
-        ttk.Checkbutton(tab3, text="Text Outline (CRT)", variable=self.text_shadow).pack(anchor='w', padx=8, pady=2)
-        ttk.Checkbutton(tab3, text="Use Star Ratings", variable=self.use_stars).pack(anchor='w', padx=8, pady=2)
-        ttk.Checkbutton(tab3, text="Vertical Bar Layout", variable=self.bar_vertical).pack(anchor='w', padx=8, pady=2)
-        ttk.Checkbutton(tab3, text="Players as Text (Max P)", variable=self.use_player_text).pack(anchor='w', padx=8, pady=2)
-        ttk.Checkbutton(tab3, text="Gradient Bar Fill", variable=self.bar_gradient).pack(anchor='w', padx=8, pady=2)
-        ttk.Checkbutton(tab3, text="Hide Metadata Bar Entirely (disable drawing)", variable=self.hide_metadata).pack(anchor='w', padx=8, pady=2)
+        ttk.Checkbutton(border_frame, text="Bar Shadow", variable=self.bar_shadow, command=self.update_preview).pack(side='left', padx=8)
+        ttk.Checkbutton(border_frame, text="Text Outline (CRT)", variable=self.text_shadow, command=self.update_preview).pack(side='left', padx=4)
+
+        # Checkbox means "use gauge instead of default stars"
+        ttk.Checkbutton(tab3, text="Use RPG Gauge Ratings (Colors/Health change based on rating. Pretty nifty, eh?)", variable=self.use_stars, command=self.update_preview).pack(anchor='w', padx=8, pady=2)
+        # Note: variable is still called use_stars but logic inverted in draw call (True=stars)
+        ttk.Checkbutton(tab3, text="Display Rating as Text (e.g. \"92%\")", variable=self.display_rating_as_text, command=self.update_preview).pack(anchor='w', padx=8, pady=2)
+        
+        # NEW: Star spacing slider
+        star_space_frame = ttk.Frame(tab3); star_space_frame.pack(fill='x', padx=8, pady=2)
+        ttk.Label(star_space_frame, text="Star Spacing", width=12).pack(side='left')
+        self.star_space_scale = ttk.Scale(star_space_frame, from_=0.7, to=1.6, orient="horizontal", variable=self.star_spacing_mult)
+        self.star_space_scale.pack(side='left', fill='x', padx=4)
+        self.star_space_label = ttk.Label(star_space_frame, text="1.00x", width=6)
+        self.star_space_label.pack(side='right')
+        self.star_space_scale.config(command=lambda v: self.star_space_label.config(text=f"{float(v):.2f}x"))
+        
+        # NEW: Vertical mode extra gap between rating and players
+        vgap_frame = ttk.Frame(tab3); vgap_frame.pack(fill='x', padx=8, pady=2)
+        ttk.Label(vgap_frame, text="Vertical Rating→Player Gap", width=18).pack(side='left')
+        self.vgap_scale = ttk.Scale(vgap_frame, from_=0.8, to=2.0, orient="horizontal", variable=self.vertical_player_gap_mult)
+        self.vgap_scale.pack(side='left', fill='x', padx=4)
+        self.vgap_label = ttk.Label(vgap_frame, text="1.15x", width=6)
+        self.vgap_label.pack(side='right')
+        self.vgap_scale.config(command=lambda v: self.vgap_label.config(text=f"{float(v):.2f}x"))
+
+        star_opts = ttk.Frame(tab3); star_opts.pack(fill='x', padx=8, pady=2)
+        ttk.Label(star_opts, text="Star Design:").pack(side='left', padx=4)
+        self.star_style_combo = ttk.Combobox(star_opts, textvariable=self.star_style, 
+                                              values=["Classic Filled", "Outlined (★/☆)"], state="readonly", width=16)
+        self.star_style_combo.pack(side='left', padx=4)
+        self.star_style_combo.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
+        ttk.Button(star_opts, text="★ Color", command=self.choose_star_color, width=10).pack(side='left', padx=6)
+        self.star_swatch = tk.Label(star_opts, text=" ", bg="#ffd700", relief="raised", width=3, height=1)
+        self.star_swatch.pack(side='left', padx=2)
+        
+        ttk.Checkbutton(tab3, text="Vertical Bar Layout", variable=self.bar_vertical, command=self.update_preview).pack(anchor='w', padx=8, pady=2)
+        ttk.Checkbutton(tab3, text="Show Field Labels in Vertical Mode (Year, Genre, Publisher, Developer)", variable=self.vertical_labels, command=self.update_preview).pack(anchor='w', padx=8, pady=2)
+        ttk.Checkbutton(tab3, text="Hide Metadata Bar Entirely (disable drawing)", variable=self.hide_metadata, command=self.update_preview).pack(anchor='w', padx=8, pady=2)
+
+        pstyle_frame = ttk.Frame(tab3); pstyle_frame.pack(fill='x', padx=8, pady=3)
+        ttk.Label(pstyle_frame, text="Player Icon Style:").pack(side='left', padx=4)
+        self.player_icon_combo = ttk.Combobox(pstyle_frame, textvariable=self.player_icon_style, 
+                                              values=["Players as Text", "Classic", "X", "Dots", "Circles", "Custom Icon"], state="readonly", width=14)
+        self.player_icon_combo.current(1)
+        self.player_icon_combo.pack(side='left', padx=4)
+        self.player_icon_combo.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
+        ttk.Button(pstyle_frame, text="Load Custom Icon", command=self.load_custom_player_icon, width=16).pack(side='left', padx=4)
+        self.custom_player_icon_label = ttk.Label(pstyle_frame, text="No custom icon", foreground="#a0a0b0", width=18)
+        self.custom_player_icon_label.pack(side='left', padx=4)
+        ttk.Label(pstyle_frame, text="(Pull up your own image to reflect the number of players like a joystick icon)", foreground="#888", font=("TkDefaultFont", 7)).pack(side='left', padx=6)
         
         bar_pat = ttk.Frame(tab3); bar_pat.pack(fill='x', padx=8, pady=2)
         ttk.Label(bar_pat, text="Bar Pattern:").pack(side='left', padx=4)
         self.bar_pattern_combo = ttk.Combobox(bar_pat, textvariable=self.bar_pattern, 
-                                            values=["None", "Dots", "Stripes", "Grid", "Noise"], state="readonly", width=12)
+                                            values=["None", "Gradient", "Horizontal Gradient", "Diagonal", "Checkerboard", "Dots", "Stripes", "Grid", "Noise", "Bricks", "Hex", "Scanlines", "Crosshatch", "Lattice"], state="readonly", width=14)
         self.bar_pattern_combo.pack(side='left', padx=4)
+        ttk.Button(bar_pat, text="Secondary Color", command=self.choose_bar_color2, width=13).pack(side='left', padx=6)
+        self.bar2_swatch = tk.Label(bar_pat, text=" ", bg=self._hex((*self.bar_color2[:3], 255)), relief="raised", width=3, height=1)
+        self.bar2_swatch.pack(side='left', padx=2)
         
         texture_frame = ttk.Frame(tab3)
         texture_frame.pack(pady=4)
@@ -860,12 +1102,10 @@ class App(tk.Tk):
         ttk.Scale(text_scale_frame, from_=0.6, to=2.0, orient="horizontal", variable=self.text_scale_var, 
                   command=lambda v: self.text_scale_label.config(text=f"{float(v):.2f}x")).pack(side='left', fill='x', padx=4)
 
-        ttk.Label(tab3, text="Bar Position & Size (values auto-clamp to screen; use arrows or type in entries)", font=("TkDefaultFont", 8)).pack(anchor='w', padx=8, pady=(8,0))
+        ttk.Label(tab3, text="Bar Position & Size)", font=("TkDefaultFont", 8)).pack(anchor='w', padx=8, pady=(8,0))
         
-        # Improved position controls with better ranges and live update
         pos_frame = ttk.Frame(tab3); pos_frame.pack(fill='x', padx=8, pady=2)
         
-        # Width
         sf = ttk.Frame(pos_frame); sf.pack(side='left', fill='x', expand=True, padx=3)
         ttk.Label(sf, text="Width", width=7).pack(side='left')
         self.bar_w_scale = ttk.Scale(sf, from_=200, to=1400, orient="horizontal", variable=self.bar_w)
@@ -875,7 +1115,15 @@ class App(tk.Tk):
         self.bar_w_label = ttk.Label(sf, textvariable=self.bar_w, width=5)
         self.bar_w_label.pack(side='right')
         
-        # X Pos (centered default)
+        sf = ttk.Frame(pos_frame); sf.pack(side='left', fill='x', expand=True, padx=3)
+        ttk.Label(sf, text="Height", width=7).pack(side='left')
+        self.bar_h_scale = ttk.Scale(sf, from_=20, to=300, orient="horizontal", variable=self.bar_height_var)
+        self.bar_h_scale.pack(side='left', fill='x', padx=3)
+        self.bar_h_spin = ttk.Spinbox(sf, textvariable=self.bar_height_var, from_=20, to=300, increment=5, width=7, command=self._live_update_preview)
+        self.bar_h_spin.pack(side='right', padx=2)
+        self.bar_h_label = ttk.Label(sf, textvariable=self.bar_height_var, width=5)
+        self.bar_h_label.pack(side='right')
+        
         sf = ttk.Frame(pos_frame); sf.pack(side='left', fill='x', expand=True, padx=3)
         ttk.Label(sf, text="X Pos", width=7).pack(side='left')
         self.bar_x_scale = ttk.Scale(sf, from_=-400, to=2000, orient="horizontal", variable=self.bar_x_var)
@@ -885,7 +1133,6 @@ class App(tk.Tk):
         self.bar_x_label = ttk.Label(sf, textvariable=self.bar_x_var, width=5)
         self.bar_x_label.pack(side='right')
         
-        # Y Pos
         sf = ttk.Frame(pos_frame); sf.pack(side='left', fill='x', expand=True, padx=3)
         ttk.Label(sf, text="Y Pos", width=7).pack(side='left')
         self.bar_y_scale = ttk.Scale(sf, from_=-100, to=800, orient="horizontal", variable=self.bar_y_var)
@@ -895,11 +1142,11 @@ class App(tk.Tk):
         self.bar_y_label = ttk.Label(sf, textvariable=self.bar_y_var, width=5)
         self.bar_y_label.pack(side='right')
 
-        # Bind spinboxes + keep scale live updates
-        for spin, var in [(self.bar_w_spin, self.bar_w), (self.bar_x_spin, self.bar_x_var), (self.bar_y_spin, self.bar_y_var)]:
+        for spin, var in [(self.bar_w_spin, self.bar_w), (self.bar_h_spin, self.bar_height_var), (self.bar_x_spin, self.bar_x_var), (self.bar_y_spin, self.bar_y_var)]:
             spin.bind("<Return>", lambda e, v=var: self._update_from_entry(v))
             spin.bind("<FocusOut>", lambda e, v=var: self._update_from_entry(v))
         self.bar_w_scale.config(command=lambda v: self._live_update_preview())
+        self.bar_h_scale.config(command=lambda v: self._live_update_preview())
         self.bar_x_scale.config(command=lambda v: self._live_update_preview())
         self.bar_y_scale.config(command=lambda v: self._live_update_preview())
 
@@ -912,7 +1159,6 @@ class App(tk.Tk):
     def _update_from_entry(self, var):
         try:
             val = float(var.get())
-            # Clamp based on current res
             is_720p = self.get_current_res() == "720p"
             W = 1920 if is_720p else 640
             if var == self.bar_x_var:
@@ -921,7 +1167,9 @@ class App(tk.Tk):
                 val = max(-100, min(val, 800 if is_720p else 500))
             elif var == self.bar_w:
                 val = max(200, min(val, W - 40))
-            var.set(int(val) if var in [self.bar_x_var, self.bar_y_var, self.bar_w] else val)
+            elif var == self.bar_height_var:
+                val = max(20, min(val, 400))
+            var.set(int(val) if var in [self.bar_x_var, self.bar_y_var, self.bar_w, self.bar_height_var] else val)
         except:
             pass
         self.update_preview()
@@ -935,13 +1183,12 @@ class App(tk.Tk):
         W = 1920 if is_720p else 640
         bar_w = self.bar_w.get()
         self.bar_x_var.set( max(10, (W - bar_w) // 2 ) )
-        self.bar_y_var.set( max(5, int( (720 if is_720p else 480) * 0.04 )) )  # closer to top possible
+        self.bar_y_var.set( max(5, int( (720 if is_720p else 480) * 0.04 )) )
         self.update_preview()
 
     def autofit_bar_width(self):
         is_720p = self.get_current_res() == "720p"
         W = 1920 if is_720p else 640
-        # Set a nice centered width
         target_w = int(W * 0.65) if is_720p else int(W * 0.78)
         self.bar_w.set(target_w)
         self.center_bar()
@@ -952,6 +1199,8 @@ class App(tk.Tk):
         self.enable_additional = tk.BooleanVar(value=False)
         ttk.Checkbutton(tab_add, text="Enable Additional Background Image (PNG with transparency supported)", variable=self.enable_additional, command=self.update_preview).pack(anchor='w', padx=8, pady=6)
         ttk.Button(tab_add, text="Select Additional Image (PNG recommended for transparency)", command=self.load_additional_image).pack(pady=4)
+        self.additional_label = ttk.Label(tab_add, text="No image selected", foreground="#a0a0b0", width=50)
+        self.additional_label.pack(pady=2, padx=8, anchor='w')
         
         for label, var, fromv, tov in [
             ("Scale", self.additional_scale, 0.1, 3.0),
@@ -992,11 +1241,12 @@ class App(tk.Tk):
         ttk.Scale(trans_row, from_=0, to=100, orient="horizontal", variable=self.additional_alpha, 
                   command=lambda v: self.add_alpha_label.config(text=f"{int(float(v))}%")).pack(side='left', fill='x', padx=4)
 
-        # Second Additional Image controls (duplicated for independent use in preview/generate)
         sep = ttk.Separator(tab_add, orient='horizontal')
         sep.pack(fill='x', padx=8, pady=8)
         ttk.Checkbutton(tab_add, text="Enable Second Additional Image (PNG with transparency)", variable=self.enable_additional2, command=self.update_preview).pack(anchor='w', padx=8, pady=4)
         ttk.Button(tab_add, text="Select Second Additional Image", command=self.load_additional2_image).pack(pady=2)
+        self.additional2_label = ttk.Label(tab_add, text="No image selected", foreground="#a0a0b0", width=50)
+        self.additional2_label.pack(pady=2, padx=8, anchor='w')
         
         for label, var, fromv, tov in [
             ("Scale 2", self.additional2_scale, 0.1, 3.0),
@@ -1045,13 +1295,9 @@ class App(tk.Tk):
         self.update_preview()
 
     def center_additional(self):
-        # Center the additional image (approximate, since we don't know size until render)
         is_720p = self.get_current_res() == "720p"
         W = 1280 if is_720p else 640
         H = 720 if is_720p else 480
-        # Rough center assuming some scale
-        scale = self.additional_scale.get()
-        # We can't know exact w/h without loading, so just center the top-left roughly
         self.additional_x.set( int(W * 0.35) )
         self.additional_y.set( int(H * 0.25) )
         self.update_preview()
@@ -1064,7 +1310,6 @@ class App(tk.Tk):
             try:
                 with Image.open(self.additional_image) as im:
                     iw, ih = im.size
-                # Fit nicely, e.g. 40% of screen width
                 target_w = int(W * 0.45)
                 sc = target_w / iw
                 self.additional_scale.set(round(sc, 2))
@@ -1122,17 +1367,41 @@ class App(tk.Tk):
         ttk.Button(color_row, text="Custom Font", command=self.pick_desc_font, width=12).pack(side='left', padx=2)
         
         gframe = ttk.Frame(tab_desc); gframe.pack(fill='x', padx=8, pady=4)
-        ttk.Checkbutton(gframe, text="Gradient Fill", variable=self.desc_gradient).pack(side='left', padx=4)
         ttk.Label(gframe, text="Pattern:").pack(side='left', padx=4)
         self.desc_pattern_combo = ttk.Combobox(gframe, textvariable=self.desc_pattern, 
-                                             values=["None", "Dots", "Stripes", "Grid", "Noise"], state="readonly", width=12)
+                                             values=["None", "Gradient", "Horizontal Gradient", "Diagonal", "Checkerboard", "Dots", "Stripes", "Grid", "Noise", "Bricks", "Hex", "Scanlines", "Crosshatch", "Lattice"], state="readonly", width=14)
         self.desc_pattern_combo.pack(side='left', padx=4)
+        ttk.Button(gframe, text="Secondary Color", command=self.choose_desc_color2, width=13).pack(side='left', padx=6)
+        self.desc2_swatch = tk.Label(gframe, text=" ", bg=self._hex((*self.desc_color2[:3], 255)), relief="raised", width=3, height=1)
+        self.desc2_swatch.pack(side='left', padx=2)
         ttk.Button(gframe, text="Load Texture", command=self.load_desc_texture).pack(side='left', padx=8)
         ttk.Button(gframe, text="Copy from Metadata Bar", command=self.copy_metadata_to_desc).pack(side='left', padx=8)
 
-        ttk.Label(tab_desc, text="Border Style / Radius / Padding: Use the controls in Metadata Bar tab, then click 'Copy from Metadata Bar' above to sync to Description. Text outline uses global CRT setting.", font=("TkDefaultFont", 7), foreground="#888").pack(anchor='w', padx=8, pady=2)
+        border_frame = ttk.LabelFrame(tab_desc, text="Description Border", padding=6)
+        border_frame.pack(fill='x', padx=8, pady=6)
 
-        ttk.Label(tab_desc, text="Size & Position (clamped; type numbers or use sliders/arrows)", style="Section.TLabel").pack(anchor='w', padx=8, pady=(8,2))
+        bf1 = ttk.Frame(border_frame); bf1.pack(side='left', fill='x', expand=True)
+        ttk.Label(bf1, text="Border:").pack(side='left')
+        self.desc_border_strength_combo = ttk.Combobox(bf1, textvariable=self.desc_border_strength, values=["Very Thin", "Small", "Medium", "Large"], state="readonly", width=9)
+        self.desc_border_strength_combo.pack(side='left', padx=4)
+        self.desc_border_strength_combo.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
+
+        bf2 = ttk.Frame(border_frame); bf2.pack(side='left', fill='x', expand=True, padx=8)
+        ttk.Label(bf2, text="Style:").pack(side='left')
+        self.desc_border_style_combo = ttk.Combobox(bf2, textvariable=self.desc_border_style, 
+            values=["None", "Solid", "Square", "Double", "Dashed", "Glow"], state="readonly", width=11)
+        self.desc_border_style_combo.pack(side='left', padx=4)
+        self.desc_border_style_combo.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
+
+        bf3 = ttk.Frame(border_frame); bf3.pack(side='left', fill='x', expand=True)
+        ttk.Label(bf3, text="Radius:").pack(side='left')
+        self.desc_corner_radius_combo = ttk.Combobox(bf3, textvariable=self.desc_corner_radius_choice, values=list(self.corner_radius_map.keys()), state="readonly", width=8)
+        self.desc_corner_radius_combo.pack(side='left', padx=4)
+        self.desc_corner_radius_combo.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
+
+        ttk.Checkbutton(border_frame, text="Text Outline (CRT)", variable=self.desc_text_outline, command=self.update_preview).pack(side='left', padx=8)
+
+        ttk.Label(tab_desc, text="Size & Position", style="Section.TLabel").pack(anchor='w', padx=8, pady=(8,2))
         
         for label, var, fromv, tov in [
             ("Width", self.desc_w, 80, 900),
@@ -1165,7 +1434,6 @@ class App(tk.Tk):
         ttk.Scale(desc_text_frame, from_=0.5, to=2.0, orient="horizontal", variable=self.desc_font_scale, 
                   command=lambda v: self.desc_font_label.config(text=f"{float(v):.2f}x")).pack(side='left', fill='x', padx=4)
 
-        # Description box transparency (new)
         ttk.Label(tab_desc, text="Box Transparency % (affects fill alpha)", font=("TkDefaultFont", 8)).pack(anchor='w', padx=8, pady=(6,0))
         desc_trans_frame = ttk.Frame(tab_desc); desc_trans_frame.pack(fill='x', padx=8)
         self.desc_alpha_label = ttk.Label(desc_trans_frame, text="85%", width=4)
@@ -1198,7 +1466,21 @@ class App(tk.Tk):
         self.media_size.current(1)
         self.media_size.pack(padx=8, pady=2, anchor='w')
 
-        ttk.Label(tab4, text="Position Offset from Bottom-Right (use arrows/entries for precision)", font=("TkDefaultFont", 9)).pack(anchor='w', padx=8, pady=(8,2))
+        custom_size_frame = ttk.Frame(tab4); custom_size_frame.pack(fill='x', padx=8, pady=2)
+        ttk.Label(custom_size_frame, text="Custom Size", width=12).pack(side='left')
+        self.media_custom_scale = ttk.Scale(custom_size_frame, from_=50, to=400, orient="horizontal", variable=self.media_custom_size)
+        self.media_custom_scale.pack(side='left', fill='x', padx=4)
+        self.media_custom_spin = ttk.Spinbox(custom_size_frame, textvariable=self.media_custom_size, from_=50, to=400, increment=5, width=7, command=self.update_preview)
+        self.media_custom_spin.pack(side='right', padx=2)
+        self.media_custom_label = ttk.Label(custom_size_frame, textvariable=self.media_custom_size, width=5)
+        self.media_custom_label.pack(side='right')
+        def media_custom_cmd(val):
+            self.update_preview()
+        self.media_custom_scale.config(command=media_custom_cmd)
+        self.media_custom_spin.bind("<Return>", lambda e: self.update_preview())
+        self.media_custom_spin.bind("<FocusOut>", lambda e: self.update_preview())
+
+        ttk.Label(tab4, text="Position Offset from Bottom-Right", font=("TkDefaultFont", 9)).pack(anchor='w', padx=8, pady=(8,2))
         for label, var, from_, to_ in [("Right Offset X", self.media_x, -1000, 2000), ("Bottom Offset Y", self.media_y, -1000, 2000)]:
             f = ttk.Frame(tab4); f.pack(fill='x', padx=8, pady=1)
             ttk.Label(f, text=label, width=16).pack(side='left')
@@ -1243,7 +1525,21 @@ class App(tk.Tk):
         self.opt_media_size.pack(padx=8, pady=2, anchor='w')
         self.opt_media_size.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
 
-        ttk.Label(tab_opt, text="Position Offset from Bottom-Right (same as Physical Media)", font=("TkDefaultFont", 9)).pack(anchor='w', padx=8, pady=(8,2))
+        custom_size_frame_opt = ttk.Frame(tab_opt); custom_size_frame_opt.pack(fill='x', padx=8, pady=2)
+        ttk.Label(custom_size_frame_opt, text="Custom Size", width=12).pack(side='left')
+        self.opt_media_custom_scale = ttk.Scale(custom_size_frame_opt, from_=50, to=400, orient="horizontal", variable=self.opt_media_custom_size)
+        self.opt_media_custom_scale.pack(side='left', fill='x', padx=4)
+        self.opt_media_custom_spin = ttk.Spinbox(custom_size_frame_opt, textvariable=self.opt_media_custom_size, from_=50, to=400, increment=5, width=7, command=self.update_preview)
+        self.opt_media_custom_spin.pack(side='right', padx=2)
+        self.opt_media_custom_label = ttk.Label(custom_size_frame_opt, textvariable=self.opt_media_custom_size, width=5)
+        self.opt_media_custom_label.pack(side='right')
+        def opt_custom_cmd(val):
+            self.update_preview()
+        self.opt_media_custom_scale.config(command=opt_custom_cmd)
+        self.opt_media_custom_spin.bind("<Return>", lambda e: self.update_preview())
+        self.opt_media_custom_spin.bind("<FocusOut>", lambda e: self.update_preview())
+
+        ttk.Label(tab_opt, text="Position Offset from Bottom-Right", font=("TkDefaultFont", 9)).pack(anchor='w', padx=8, pady=(8,2))
         for label, var, from_, to_ in [("Right Offset X", self.opt_media_x, -1000, 2000), ("Bottom Offset Y", self.opt_media_y, -1000, 2000)]:
             f = ttk.Frame(tab_opt); f.pack(fill='x', padx=8, pady=1)
             ttk.Label(f, text=label, width=16).pack(side='left')
@@ -1274,7 +1570,7 @@ class App(tk.Tk):
 
     def _update_opt_entry(self, var):
         try:
-            val = float(var.get())  # no clamp - allow completely free movement
+            val = float(var.get())
             var.set(int(val))
         except:
             pass
@@ -1282,7 +1578,7 @@ class App(tk.Tk):
 
     def _update_media_entry(self, var):
         try:
-            val = float(var.get())  # no clamp - allow completely free movement
+            val = float(var.get())
             var.set(int(val))
         except:
             pass
@@ -1296,7 +1592,6 @@ class App(tk.Tk):
         self.preview_canvas = tk.Canvas(tab5, width=560, height=315, bg="#111111", highlightthickness=2, highlightbackground="#5b8cff")
         self.preview_canvas.pack(padx=6, pady=4, side='left')
 
-        # Drag & drop support in preview
         self.preview_canvas.bind("<Button-1>", self._on_preview_click)
         self.preview_canvas.bind("<B1-Motion>", self._on_preview_drag)
         self.preview_canvas.bind("<ButtonRelease-1>", self._on_preview_release)
@@ -1314,7 +1609,6 @@ class App(tk.Tk):
         ttk.Button(btn_frame, text="🔄 Refresh Preview", command=self.update_preview).pack(side='left', padx=4)
         ttk.Button(btn_frame, text="Center All", command=self.center_all_elements).pack(side='left', padx=4)
 
-        # Layer priority control
         layer_frame = ttk.LabelFrame(tab5, text="Layer Order (last = on top)", padding=6)
         layer_frame.pack(fill='x', padx=10, pady=8)
 
@@ -1333,7 +1627,6 @@ class App(tk.Tk):
     def center_all_elements(self):
         self.center_bar()
         self.center_additional()
-        # Also center description roughly
         is_720p = self.get_current_res() == "720p"
         W = 1280 if is_720p else 640
         self.desc_x.set( max(20, (W - self.desc_w.get()) // 2 ) )
@@ -1374,14 +1667,12 @@ class App(tk.Tk):
         self.layer_listbox.selection_set(idx+1)
         self.update_preview()
 
-    # --- Drag & Drop in Preview Canvas ---
     def _on_preview_click(self, event):
         if not hasattr(self, '_preview_scale'):
             return
         scale = self._preview_scale
         target_w, target_h = self._preview_target_size
 
-        # Convert canvas click to target resolution coords
         canvas_x = event.x
         canvas_y = event.y
         target_x = int(canvas_x / scale)
@@ -1393,20 +1684,24 @@ class App(tk.Tk):
 
         is_720p = self.get_current_res() == "720p"
 
-        # Check Metadata Bar (approximate hit box)
         bar_w = int(self.bar_w.get())
         bar_x = int(self.bar_x_var.get())
         bar_y = int(self.bar_y_var.get())
-        bar_h = 160 if self.bar_vertical.get() else 70  # larger hit area for easy grabbing, esp vertical
-        # Add small tolerance for easier click
-        tol = 8
+        
+        # IMPROVED: Tighter hitbox for vertical mode (was too easy to grab)
+        if self.bar_vertical.get():
+            bar_h = 220  # taller but we use tighter tol
+            tol = 5      # reduced tolerance
+        else:
+            bar_h = 70
+            tol = 8
+        
         if (bar_x - tol) <= target_x <= (bar_x + bar_w + tol) and (bar_y - tol) <= target_y <= (bar_y + bar_h + tol):
             self._drag_element = "metadata"
             self._drag_offset_x = target_x - bar_x
             self._drag_offset_y = target_y - bar_y
             return
 
-        # Check Description Box
         if self.use_description.get():
             desc_x = int(self.desc_x.get())
             desc_y = int(self.desc_y.get())
@@ -1418,11 +1713,9 @@ class App(tk.Tk):
                 self._drag_offset_y = target_y - desc_y
                 return
 
-        # Check Additional Image (if enabled)
         if self.enable_additional.get() and self.additional_image:
             ax = int(self.additional_x.get())
             ay = int(self.additional_y.get())
-            # Approximate size from scale
             try:
                 with Image.open(self.additional_image) as im:
                     aw = int(im.width * self.additional_scale.get())
@@ -1435,7 +1728,6 @@ class App(tk.Tk):
                 self._drag_offset_y = target_y - ay
                 return
 
-        # Check Second Additional Image (if enabled)
         if self.enable_additional2.get() and self.additional2_image:
             ax = int(self.additional2_x.get())
             ay = int(self.additional2_y.get())
@@ -1451,24 +1743,17 @@ class App(tk.Tk):
                 self._drag_offset_y = target_y - ay
                 return
 
-        # Check Physical Media (bottom-right offset based) - larger hit area for easier dragging
-        size_preset = self.media_size.get()
-        base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-        msize = int(base_size * (1.8 if is_720p else 1.0))
+        msize = int(self.media_custom_size.get() * (1.8 if is_720p else 1.0))
         mx = target_w - msize - int(self.media_x.get())
         my = target_h - msize - int(self.media_y.get())
-        tol = 30  # larger tolerance for easier dragging media elements
+        tol = 30
         if (mx - tol) <= target_x <= (mx + msize + tol) and (my - tol) <= target_y <= (my + msize + tol):
             self._drag_element = "media"
             self._drag_offset_x = target_x - mx
             self._drag_offset_y = target_y - my
-            # No return - allow optional check if overlapping
 
-        # Check Optional Media (bottom-right offset based, if enabled)
         if self.enable_optional_media.get():
-            size_preset = self.opt_media_size.get()
-            base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-            osize = int(base_size * (1.8 if is_720p else 1.0))
+            osize = int(self.opt_media_custom_size.get() * (1.8 if is_720p else 1.0))
             ox = target_w - osize - int(self.opt_media_x.get())
             oy = target_h - osize - int(self.opt_media_y.get())
             if (ox - tol) <= target_x <= (ox + osize + tol) and (oy - tol) <= target_y <= (oy + osize + tol):
@@ -1501,32 +1786,24 @@ class App(tk.Tk):
             self.additional2_x.set(max(-300, min(new_x, target_w + 100)))
             self.additional2_y.set(max(-100, min(new_y, target_h + 50)))
         elif self._drag_element == "media":
-            # Media is bottom-right offset, so invert - allow completely free movement
-            size_preset = self.media_size.get()
-            base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-            msize = int(base_size * (1.8 if target_w > 700 else 1.0))
+            msize = int(self.media_custom_size.get() * (1.8 if target_w > 700 else 1.0))
             new_mx = target_w - msize - new_x
             new_my = target_h - msize - new_y
             self.media_x.set(new_mx)
             self.media_y.set(new_my)
         elif self._drag_element == "optional_media":
-            # Optional Media also bottom-right offset - allow completely free movement
-            size_preset = self.opt_media_size.get()
-            base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-            osize = int(base_size * (1.8 if target_w > 700 else 1.0))
+            osize = int(self.opt_media_custom_size.get() * (1.8 if target_w > 700 else 1.0))
             new_ox = target_w - osize - new_x
             new_oy = target_h - osize - new_y
             self.opt_media_x.set(new_ox)
             self.opt_media_y.set(new_oy)
 
-        self.update_preview()  # live update while dragging
+        self.update_preview()
 
     def _on_preview_release(self, event):
         self._drag_element = None
-        # Final clamp + update
         self.update_preview()
 
-    # --- Preview layer drawing helpers (respect user layer order) ---
     def _draw_additional_in_preview(self, preview_img, target_W, target_H, is_720p):
         if not (self.enable_additional.get() and self.additional_image):
             return
@@ -1583,12 +1860,9 @@ class App(tk.Tk):
 
     def _draw_media_placeholder_in_preview(self, preview_img, target_W, target_H, is_720p):
         try:
-            size_preset = self.media_size.get()
-            base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-            media_size = int(base_size * (1.8 if is_720p else 1.0))
+            media_size = int(self.media_custom_size.get() * (1.8 if is_720p else 1.0))
             mx = target_W - media_size - int(self.media_x.get())
             my = target_H - media_size - int(self.media_y.get())
-            # Allow off-screen positioning for full customization (PIL will clip)
             
             d = ImageDraw.Draw(preview_img)
             overlay = Image.new("RGBA", preview_img.size, (0,0,0,0))
@@ -1608,12 +1882,9 @@ class App(tk.Tk):
         if not self.enable_optional_media.get():
             return
         try:
-            size_preset = self.opt_media_size.get()
-            base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-            media_size = int(base_size * (1.8 if is_720p else 1.0))
+            media_size = int(self.opt_media_custom_size.get() * (1.8 if is_720p else 1.0))
             mx = target_W - media_size - int(self.opt_media_x.get())
             my = target_H - media_size - int(self.opt_media_y.get())
-            # Allow off-screen positioning for full customization (PIL will clip)
             
             d = ImageDraw.Draw(preview_img)
             overlay = Image.new("RGBA", preview_img.size, (0,0,0,0))
@@ -1637,9 +1908,9 @@ class App(tk.Tk):
         bar_y = int(self.bar_y_var.get())
         
         bar_x = max(-300, min(bar_x, target_W + 100))
-        bar_y = max(-100, min(bar_y, target_H + 50))  # allow push off top/left
+        bar_y = max(-100, min(bar_y, target_H + 50))
         
-        dummy_meta = {"year": "2024", "genre": "Action-Adventure", "publisher": "Nintendo", "developer": "Nintendo", "rating": "0.92", "players": "1-4", "raw_name": "Preview Game"}
+        dummy_meta = {"year": "1994", "genre": "Platformer", "publisher": "Duckdog Entertainment", "developer": "Horse Masters", "rating": "0.92", "players": "1-4", "raw_name": "Preview Game"}
         
         text_sc = self.text_scale_var.get()
         draw_metadata_bar(
@@ -1652,12 +1923,23 @@ class App(tk.Tk):
             self.bar_shadow.get(), 
             self.padding_map.get(self.padding_choice.get(), 1.0),
             ImageFont.load_default(), 
-            self.use_stars.get(), 
+            not self.use_stars.get(),   # not checkbox -> stars by default
             text_sc,
             vertical=self.bar_vertical.get(), 
-            use_player_text=self.use_player_text.get(),
+            use_player_text=(self.player_icon_style.get() == "Players as Text"),
             text_color=self.text_color,
-            custom_font_path=self.custom_font
+            custom_font_path=self.custom_font,
+            vertical_labels=self.vertical_labels.get(),
+            gradient=(self.bar_pattern.get() == "Gradient"),
+            color2=self.bar_color2,
+            player_icon_style=self.player_icon_style.get(),
+            bar_height=self.bar_height_var.get(),
+            custom_player_icon_path=self.custom_player_icon,
+            display_rating_as_text=self.display_rating_as_text.get(),
+            star_style=self.star_style.get(),
+            star_color=self.star_color,
+            star_spacing_mult=self.star_spacing_mult.get(),
+            vertical_player_gap_mult=self.vertical_player_gap_mult.get()
         )
 
     def _draw_description_in_preview(self, preview_img, target_W, target_H):
@@ -1668,7 +1950,6 @@ class App(tk.Tk):
         desc_w = int(self.desc_w.get())
         desc_h = int(self.desc_h.get())
         desc_text_sc = self.desc_font_scale.get()
-        # Create properly scaled font for description (fixes too-small text)
         try:
             if self.desc_custom_font and os.path.exists(self.desc_custom_font):
                 fpath = self.desc_custom_font
@@ -1681,33 +1962,33 @@ class App(tk.Tk):
         alpha = int(255 * self.desc_alpha_pct.get() / 100)
         draw_description_box(
             preview_img, desc_x, desc_y, desc_w, desc_h, 
-            "This is a sample description box. The text scaling and positioning now work correctly in both CRT and 720p modes. Enjoy the improved UI!",
+            "This is a sample description box. The text scaling and positioning display correctly in both CRT and 720p modes.",
             (*self.desc_rgb, alpha), self.desc_border_color, 
-            self.border_width_map.get(self.border_strength.get(), 2), 
-            self.border_style.get(), 
-            int(self.corner_radius_map.get(self.corner_radius_choice.get(), 10)), 
+            self.border_width_map.get(self.desc_border_strength.get(), 2), 
+            self.desc_border_style.get(), 
+            int(self.corner_radius_map.get(self.desc_corner_radius_choice.get(), 10)), 
             self.desc_shadow.get(), 
             desc_font, 
             desc_text_sc,
-            gradient=self.desc_gradient.get(), 
-            color2=self.bg_color2, 
+            gradient=(self.desc_pattern.get() == "Gradient"), 
+            color2=self.desc_color2, 
             texture=self.desc_texture, 
             pattern=self.desc_pattern.get().lower() if self.desc_pattern.get() != "None" else None,
-            text_outline=self.text_shadow.get(),
+            text_outline=self.desc_text_outline.get(),
             text_color=self.desc_text_color
         )
 
     def update_tab_description(self, event=None):
         current = self.notebook.tab(self.notebook.select(), "text")
         descriptions = {
-            "Paths": "XML and Games Folder mutually exclusive. Optional Media Folder (unchecked default) is fully separate from Physical Media. Enable folder in Paths, then use the Optional Media tab for independent overlay.",
+            "Paths": "v 1.2",
             "Background": "Plain color, screenshot dim, or Custom BG Image with Stretch/Zoom/Original/Tile modes + dim. All update live in Preview.",
-            "Metadata Bar": "Full styling (colors, border style/radius/padding, gradient, patterns, text scale, transparency). Center/Auto-fit buttons. Drag in Preview to position. Text color now works correctly.",
-            "Description": "Now has its own Box/Border/Text colors + full border options via Copy from Metadata. Text scale fixed. Drag/resize in Preview.",
+            "Metadata Bar": "Full styling (colors, border style/radius/padding, gradient, patterns, text scale, transparency).",
+            "Description": "Only available with gamelist.xml",
             "Additional Image": "Two independent additional PNG layers (transparency/shadow supported, shadows OFF by default). Drag to move in Preview. Center/Fit buttons per image. Layer order controllable.",
-            "Physical Media": "Box art/disc from MD folder. Size presets + precise offset. Shadow + transparency. Positioned bottom-right. Drag in Preview to adjust offset. Fully separate from Optional Media.",
-            "Preview": "Pixel-accurate live view (CRT or 720p). Click elements to drag & reposition them live. Layer stacking order editable below. Generation now exactly matches this order.",
-            "Optional Media": "Independent per-game overlay from Optional Media Folder only. Does NOT affect Physical Media. Disabled by default. Position/size/shadow/alpha independent."
+            "Physical Media": "Custom settings for disc art.",
+            "Preview": "Pixel-accurate live view (CRT or 720p). Click elements to drag & reposition them live. Layer stacking order editable above.",
+            "Optional Media": "How about adding back boxart or a title screen?"
         }
         self.tab_desc_label.config(text=descriptions.get(current, ""))
 
@@ -1716,13 +1997,6 @@ class App(tk.Tk):
         return "#%02x%02x%02x" % tuple(rgba[:3])
 
     def on_path_toggle(self, key):
-        if key == "xml" and self.path_enabled["xml"].get():
-            self.path_enabled["roms"].set(False)
-        elif key == "roms" and self.path_enabled["roms"].get():
-            self.path_enabled["xml"].set(False)
-        if key == "optional_media":
-            if not (self.path_enabled["optional_media"].get() and self.paths["optional_media"].get()):
-                self.enable_optional_media.set(False)
         self.update_preview()
 
     def pick(self, key):
@@ -1730,13 +2004,18 @@ class App(tk.Tk):
             p = filedialog.askopenfilename(filetypes=[("XML Files", "*.xml")])
         else:
             p = filedialog.askdirectory(title=f"Select {key.upper()} Folder")
-        if p: self.paths[key].set(p)
+        if p:
+            self.paths[key].set(p)
+            self.update_preview()
 
     def load_additional_image(self):
         path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png *.jpg *.jpeg *.webp")])
         if path:
             self.additional_image = path
             self.enable_additional.set(True)
+            if hasattr(self, 'additional_label') and self.additional_label:
+                fname = os.path.basename(path)
+                self.additional_label.config(text=fname, foreground="#80ff80")
             messagebox.showinfo("Success", "Additional image loaded. Enable checkbox to use it.\nTransparency in PNGs is now handled correctly.")
 
     def load_additional2_image(self):
@@ -1744,7 +2023,19 @@ class App(tk.Tk):
         if path:
             self.additional2_image = path
             self.enable_additional2.set(True)
+            if hasattr(self, 'additional2_label') and self.additional2_label:
+                fname = os.path.basename(path)
+                self.additional2_label.config(text=fname, foreground="#80ff80")
             messagebox.showinfo("Success", "Second additional image loaded. Enable its checkbox to use it.\nTransparency in PNGs is supported.")
+
+    def load_custom_player_icon(self):
+        path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png *.jpg *.jpeg *.webp *.ico")])
+        if path:
+            self.custom_player_icon = path
+            if hasattr(self, 'custom_player_icon_label') and self.custom_player_icon_label:
+                fname = os.path.basename(path)
+                self.custom_player_icon_label.config(text=fname, foreground="#80ff80")
+            messagebox.showinfo("Success", "Custom player icon loaded. Select 'Custom Icon' in Player Icon Style to use it.\nIt will be used for player count indicators in metadata bar.")
 
     def choose_bg(self):
         c = colorchooser.askcolor(color=self._hex(self.bg_color))[0]
@@ -1767,6 +2058,22 @@ class App(tk.Tk):
             self.bar_swatch.config(bg=self._hex((*self.bar_rgb, 255)))
             self.update_preview()
 
+    def choose_bar_color2(self):
+        c = colorchooser.askcolor(color=self._hex((*self.bar_color2[:3], 255)))[0]
+        if c:
+            self.bar_color2 = (*map(int, c), 255)
+            if hasattr(self, "bar2_swatch"):
+                self.bar2_swatch.config(bg=self._hex(self.bar_color2))
+            self.update_preview()
+
+    def choose_desc_color2(self):
+        c = colorchooser.askcolor(color=self._hex((*self.desc_color2[:3], 255)))[0]
+        if c:
+            self.desc_color2 = (*map(int, c), 255)
+            if hasattr(self, "desc2_swatch"):
+                self.desc2_swatch.config(bg=self._hex(self.desc_color2))
+            self.update_preview()
+
     def choose_border(self):
         c = colorchooser.askcolor(color=self._hex(self.border_color))[0]
         if c:
@@ -1786,6 +2093,14 @@ class App(tk.Tk):
         if c:
             self.text_color = tuple(map(int, c))
             self.text_swatch.config(bg=self._hex(self.text_color))
+            self.update_preview()
+
+    def choose_star_color(self):
+        c = colorchooser.askcolor(color=self._hex(self.star_color))[0]
+        if c:
+            self.star_color = tuple(map(int, c))
+            if hasattr(self, 'star_swatch') and self.star_swatch:
+                self.star_swatch.config(bg=self._hex(self.star_color))
             self.update_preview()
 
     def choose_desc_border(self):
@@ -1832,7 +2147,6 @@ class App(tk.Tk):
         if path:
             self.custom_bg_image = path
             self.use_custom_bg.set(True)
-            # Update label with filename
             fname = os.path.basename(path)
             self.custom_bg_label.config(text=fname, foreground="#80ff80")
             messagebox.showinfo("Success", "Custom background image loaded.\nUse 'Use Custom Background Image' checkbox to enable it.\nModes: Stretch (distort), Zoom/Cover (crops edges), Original (centered), Tile.")
@@ -1843,7 +2157,6 @@ class App(tk.Tk):
         self.use_custom_bg.set(False)
         self.custom_bg_image = None
         self.bg_image_mode.set("Stretch to Fill")
-        # Reset optional paths
         for k in ["xml", "ss", "md", "roms", "optional_media"]:
             if k in self.path_enabled:
                 self.path_enabled[k].set(k in ["xml", "ss", "md"])
@@ -1852,6 +2165,8 @@ class App(tk.Tk):
         self.optimize.set(True)
         self.bg_color = (30, 30, 40, 255)
         self.bar_rgb = (25, 45, 90)
+        self.bar_color2 = (35, 55, 105, 255)
+        self.desc_color2 = (35, 55, 105, 255)
         self.border_color = (255, 255, 255, 220)
         self.desc_rgb = (25, 45, 90)
         self.desc_border_color = (255, 255, 255, 220)
@@ -1860,7 +2175,14 @@ class App(tk.Tk):
         self.text_scale_var.set(1.0)
         self.bar_alpha_pct.set(82)
         self.desc_font_scale.set(1.0)
-        self.use_stars.set(False)
+        self.use_stars.set(False)  # default = stars (checkbox unchecked)
+        self.display_rating_as_text.set(False)
+        self.star_style.set("Classic Filled")
+        self.star_color = (255, 215, 0)
+        if hasattr(self, 'star_swatch') and self.star_swatch:
+            self.star_swatch.config(bg=self._hex(self.star_color))
+        self.star_spacing_mult.set(1.0)
+        self.vertical_player_gap_mult.set(1.15)
         self.bar_shadow.set(True)
         self.media_shadow.set(True)
         self.use_description.set(False)
@@ -1868,32 +2190,40 @@ class App(tk.Tk):
         self.text_shadow.set(True)
         self.use_player_text.set(False)
         self.bar_vertical.set(False)
+        self.vertical_labels.set(False)
         self.bg_pattern.set("None")
         self.bar_pattern.set("None")
         self.desc_pattern.set("None")
+        self.desc_border_strength.set("Small")
+        self.desc_border_style.set("Solid")
+        self.desc_corner_radius_choice.set("Slight")
+        self.desc_text_outline.set(True)
         self.border_strength.current(0)
         self.border_style.current(0)
         self.corner_radius_choice.current(1)
         self.padding_choice.current(1)
         self.dim_choice.current(1)
         self.media_size.current(1)
+        self.media_custom_size.set(168)
+        self.player_icon_style.set("Classic")
         self.res_mode.current(0)
         self.enable_additional.set(False)
         self.additional_scale.set(0.6)
         self.additional_alpha.set(100)
-        self.additional_shadow.set(False)  # FIXED
+        self.additional_shadow.set(False)
         self.enable_additional2.set(False)
         self.additional2_image = None
         self.additional2_scale.set(0.5)
         self.additional2_alpha.set(80)
-        self.additional2_shadow.set(False)  # FIXED
-        self.enable_optional_media.set(False)  # FIXED
+        self.additional2_shadow.set(False)
+        self.enable_optional_media.set(False)
         self.hide_metadata.set(False)
         self.desc_alpha_pct.set(85)
         self.naming_mode.set("superstation")
         self.custom_suffix.set("-BG")
         if hasattr(self, 'opt_media_size'):
             self.opt_media_size.current(1)
+        self.opt_media_custom_size.set(168)
         self.opt_media_x.set(30)
         self.opt_media_y.set(30)
         self.opt_media_shadow.set(True)
@@ -1915,8 +2245,22 @@ class App(tk.Tk):
         self.custom_bg_image = None
         if hasattr(self, 'custom_bg_label'):
             self.custom_bg_label.config(text="No image selected", foreground="#a0a0b0")
-        self.apply_res_defaults()  # This sets centered bar etc.
-        messagebox.showinfo("Defaults", "All settings reset to sensible defaults for current resolution.\nMetadata bar is centered by default.\nOptional Media and Additional Image shadows are OFF by default.")
+        if hasattr(self, 'additional_label') and self.additional_label:
+            self.additional_label.config(text="No image selected", foreground="#a0a0b0")
+        if hasattr(self, 'additional2_label') and self.additional2_label:
+            self.additional2_label.config(text="No image selected", foreground="#a0a0b0")
+        self.custom_player_icon = None
+        if hasattr(self, 'custom_player_icon_label') and self.custom_player_icon_label:
+            self.custom_player_icon_label.config(text="No custom icon", foreground="#a0a0b0")
+        self.apply_res_defaults()
+        try:
+            self.notebook.tab(2, state="normal", text="Metadata Bar")
+            self.notebook.tab(3, state="normal", text="Description")
+            if hasattr(self, 'opt_media_path_label'):
+                self.opt_media_path_label.config(foreground="#a0a0b0")
+        except:
+            pass
+        messagebox.showinfo("Defaults", "All settings reset to sensible defaults for current resolution.\nMetadata bar is centered by default.\nStars are now the DEFAULT rating style. Checkbox = Use Gauge instead.\nOptional Media and Additional Image shadows are OFF by default.")
         self.update_preview()
 
     def load_desc_texture(self):
@@ -1926,7 +2270,6 @@ class App(tk.Tk):
             messagebox.showinfo("Success", "Description texture loaded.")
 
     def copy_metadata_to_desc(self):
-        # Copy styling from Metadata to Description for uniformity (colors, border params, gradient, pattern, shadow)
         self.desc_rgb = tuple(self.bar_rgb)
         if hasattr(self, 'desc_swatch'):
             self.desc_swatch.config(bg=self._hex((*self.desc_rgb, 255)))
@@ -1936,23 +2279,22 @@ class App(tk.Tk):
         self.desc_text_color = tuple(self.text_color)
         if hasattr(self, 'desc_text_swatch'):
             self.desc_text_swatch.config(bg=self._hex(self.desc_text_color))
-        self.border_strength.set(self.border_strength.get())
-        self.border_style.set(self.border_style.get())
-        self.corner_radius_choice.set(self.corner_radius_choice.get())
-        self.padding_choice.set(self.padding_choice.get())
+        self.desc_border_strength.set(self.border_strength.get())
+        self.desc_border_style.set(self.border_style.get())
+        self.desc_corner_radius_choice.set(self.corner_radius_choice.get())
+        self.desc_text_outline.set(self.text_shadow.get())
         self.desc_gradient.set(self.bar_gradient.get())
         self.desc_pattern.set(self.bar_pattern.get())
         self.desc_shadow.set(self.bar_shadow.get())
-        messagebox.showinfo("Copied", "Description styling copied from Metadata Bar for easy uniformity.")
+        messagebox.showinfo("Copied", "Description styling + border options copied from Metadata Bar for easy uniformity.")
         self.update_preview()
 
     def update_preview(self):
         try:
             is_720p = self.get_current_res() == "720p"
-            # Preview canvas is fixed size, we render at target res then scale down for display
             target_W, target_H = (1280, 720) if is_720p else (640, 480)
             display_w = 560
-            scale_factor = display_w / target_W   # fit to canvas width ~560px for better visibility
+            scale_factor = display_w / target_W
             
             preview_W = int(target_W * scale_factor)
             preview_H = int(target_H * scale_factor)
@@ -1960,10 +2302,8 @@ class App(tk.Tk):
             self._preview_scale = scale_factor
             self._preview_target_size = (target_W, target_H)
             
-            # Create preview at target resolution for accuracy, then resize for display
             preview_img = Image.new("RGBA", (target_W, target_H), self.bg_color)
             
-            # Background: Custom > Plain/Pattern (simplified preview, no full dim to keep responsive)
             if self.use_custom_bg.get() and self.custom_bg_image and os.path.exists(self.custom_bg_image):
                 try:
                     cbg = Image.open(self.custom_bg_image).convert("RGBA")
@@ -1984,14 +2324,14 @@ class App(tk.Tk):
                         oy = max(0, (target_H - cbg.height) // 2)
                         canv.paste(cbg, (ox, oy), cbg if cbg.mode == "RGBA" else None)
                         cbg = canv
-                    else:  # Tile
+                    else:
                         canv = Image.new("RGBA", (target_W, target_H), self.bg_color)
                         tw, th = cbg.size
                         for yy in range(0, target_H, th):
                             for xx in range(0, target_W, tw):
                                 canv.paste(cbg, (xx, yy), cbg if cbg.mode == "RGBA" else None)
                         cbg = canv
-                    preview_img = cbg  # replace base
+                    preview_img = cbg
                 except Exception as e:
                     print("Custom BG preview error:", e)
             elif self.plain_bg.get():
@@ -2000,10 +2340,10 @@ class App(tk.Tk):
                 is_gradient = bg_pattern_raw == "Gradient"
                 effective_pattern = "checkerboard" if bg_pattern == "checkerboard" else bg_pattern
                 if bg_pattern or is_gradient:
-                    fill = create_fill_overlay((target_W, target_H), self.bg_color, self.bg_color2 if is_gradient else None, "vertical" if is_gradient else None, None, effective_pattern)
+                    grad_dir = "vertical" if is_gradient else None
+                    fill = create_fill_overlay((target_W, target_H), self.bg_color, self.bg_color2, grad_dir, None, effective_pattern)
                     preview_img.alpha_composite(fill)
 
-            # Draw overlays in user-selected layer order (last = on top)
             draw_funcs = {
                 "additional": lambda: self._draw_additional_in_preview(preview_img, target_W, target_H, is_720p),
                 "additional2": lambda: self._draw_additional2_in_preview(preview_img, target_W, target_H, is_720p),
@@ -2020,7 +2360,6 @@ class App(tk.Tk):
                     except Exception as e:
                         print(f"Layer draw error ({layer}):", e)
 
-            # Resize for canvas display (maintains aspect)
             display_img = preview_img.resize((preview_W, preview_H), Image.LANCZOS)
             
             preview_tk = ImageTk.PhotoImage(display_img)
@@ -2029,7 +2368,6 @@ class App(tk.Tk):
             self.preview_canvas.create_image(preview_W//2, preview_H//2, image=preview_tk)
             self.preview_img_ref = preview_tk
             
-            # Update info
             mode_str = "720p (1280×720)" if is_720p else "CRT (640×480)"
             self.preview_info.config(text=f"Mode: {mode_str}  |  Preview is pixel-accurate scaled down.")
         except Exception as e:
@@ -2062,7 +2400,6 @@ class App(tk.Tk):
             opt_path = self.paths["optional_media"].get()
             if opt_path:
                 opt_lookup = load_media_lookup(opt_path)
-                # DO NOT merge into md_lookup - they must stay completely separate
 
         if use_roms:
             rom_folder = self.paths['roms'].get()
@@ -2086,8 +2423,8 @@ class App(tk.Tk):
                 else:
                     base_name = sanitize_stem(os.path.splitext(os.path.basename(file))[0])
                 meta = games.get(base_name) if use_xml else None
+                rom_name = base_name
 
-                # Background creation with priority: Custom BG > Plain/Pattern > Screenshot (or roms fallback)
                 dim_factor = self.dim_map.get(self.dim_choice.get(), 0.70)
                 if self.use_custom_bg.get() and self.custom_bg_image and os.path.exists(self.custom_bg_image):
                     try:
@@ -2110,7 +2447,7 @@ class App(tk.Tk):
                             oy = max(0, (H - bg.height) // 2)
                             canvas.paste(bg, (ox, oy), bg if bg.mode == "RGBA" else None)
                             bg = canvas
-                        else:  # Tile
+                        else:
                             canvas = Image.new("RGBA", (W, H), self.bg_color)
                             tile_w, tile_h = bg.size
                             for y in range(0, H, tile_h):
@@ -2121,7 +2458,7 @@ class App(tk.Tk):
                     except Exception as e:
                         print(f"Custom BG error: {e}")
                         bg = Image.new("RGBA", (W, H), self.bg_color)
-                elif self.plain_bg.get() or not use_ss or use_roms:
+                elif self.plain_bg.get() or not use_ss:
                     bg = Image.new("RGBA", (W, H), self.bg_color)
                     bg_pattern_raw = self.bg_pattern.get()
                     bg_pattern = bg_pattern_raw.lower() if bg_pattern_raw != "None" else None
@@ -2138,8 +2475,6 @@ class App(tk.Tk):
                     else:
                         bg = Image.new("RGBA", (W, H), self.bg_color)
 
-                # === Draw ALL layers in EXACT order matching the live Preview (reversed layer_order = bottom to top) ===
-                # This ensures generated art == what you see on screen. Metadata/Description only if XML meta available.
                 def _draw_meta_layer():
                     if not meta or self.hide_metadata.get(): return
                     bar_width = int(self.bar_w.get())
@@ -2154,17 +2489,27 @@ class App(tk.Tk):
                         self.border_width_map.get(self.border_strength.get(), 2), 
                         self.border_style.get(), int(self.corner_radius_map.get(self.corner_radius_choice.get(), 10)), 
                         self.bar_shadow.get(), self.padding_map.get(self.padding_choice.get(), 1.0),
-                        ImageFont.load_default(), self.use_stars.get(), self.text_scale_var.get(),
-                        gradient=self.bar_gradient.get(), color2=self.bg_color2, texture=self.bar_texture, 
-                        pattern=self.bar_pattern.get().lower() if self.bar_pattern.get() != "None" else None,
-                        text_outline=self.text_shadow.get(), vertical=self.bar_vertical.get(), use_player_text=self.use_player_text.get(),
+                        ImageFont.load_default(), not self.use_stars.get(), self.text_scale_var.get(),
+                        gradient=(self.bar_pattern.get() == "Gradient"),
+                        color2=self.bar_color2,
+                        texture=self.bar_texture, 
+                        pattern=self.bar_pattern.get().lower() if self.bar_pattern.get() not in ["None", "Gradient"] else None,
+                        text_outline=self.text_shadow.get(), vertical=self.bar_vertical.get(), use_player_text=(self.player_icon_style.get() == "Players as Text"),
                         text_color=self.text_color,
-                        custom_font_path=self.custom_font
+                        custom_font_path=self.custom_font,
+                        vertical_labels=self.vertical_labels.get(),
+                        player_icon_style=self.player_icon_style.get(),
+                        bar_height=self.bar_height_var.get(),
+                        custom_player_icon_path=self.custom_player_icon,
+                        display_rating_as_text=self.display_rating_as_text.get(),
+                        star_style=self.star_style.get(),
+                        star_color=self.star_color,
+                        star_spacing_mult=self.star_spacing_mult.get(),
+                        vertical_player_gap_mult=self.vertical_player_gap_mult.get()
                     )
 
                 def _draw_desc_layer():
                     if not (self.use_description.get() and meta and meta.get("description")): return
-                    # Create scaled font + use transparency for desc box
                     try:
                         if self.desc_custom_font and os.path.exists(self.desc_custom_font):
                             fpath = self.desc_custom_font
@@ -2180,12 +2525,12 @@ class App(tk.Tk):
                         bg, int(self.desc_x.get()), int(self.desc_y.get()), 
                         int(self.desc_w.get()), int(self.desc_h.get()), meta.get("description"), 
                         (*self.desc_rgb, alpha), self.desc_border_color, 
-                        self.border_width_map.get(self.border_strength.get(), 2), 
-                        self.border_style.get(), int(self.corner_radius_map.get(self.corner_radius_choice.get(), 10)), 
+                        self.border_width_map.get(self.desc_border_strength.get(), 2), 
+                        self.desc_border_style.get(), int(self.corner_radius_map.get(self.desc_corner_radius_choice.get(), 10)), 
                         self.desc_shadow.get(), desc_font, self.desc_font_scale.get(),
-                        gradient=self.desc_gradient.get(), color2=self.bg_color2, texture=self.desc_texture, 
+                        gradient=(self.desc_pattern.get() == "Gradient"), color2=self.desc_color2, texture=self.desc_texture, 
                         pattern=self.desc_pattern.get().lower() if self.desc_pattern.get() != "None" else None,
-                        text_outline=self.text_shadow.get(),
+                        text_outline=self.desc_text_outline.get(),
                         text_color=self.desc_text_color
                     )
 
@@ -2195,13 +2540,10 @@ class App(tk.Tk):
                     if not media_path: return
                     try:
                         d = Image.open(media_path).convert("RGBA")
-                        size_preset = self.media_size.get()
-                        base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-                        media_size = int(base_size * (1.8 if is_720p else 1.0))
+                        media_size = int(self.media_custom_size.get() * (1.8 if is_720p else 1.0))
                         d.thumbnail((media_size, media_size), Image.LANCZOS)
                         mx = W - d.width - int(self.media_x.get())
                         my = H - d.height - int(self.media_y.get())
-                        # Allow off-screen positioning for full customization (PIL alpha_composite clips off-screen parts)
                         if self.media_shadow.get():
                             alpha_ch = d.split()[-1] if d.mode == 'RGBA' else None
                             shadow_layer = Image.new("RGBA", d.size, (0, 0, 0, 160))
@@ -2220,13 +2562,10 @@ class App(tk.Tk):
                     if not opt_path: return
                     try:
                         d = Image.open(opt_path).convert("RGBA")
-                        size_preset = self.opt_media_size.get()
-                        base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
-                        media_size = int(base_size * (1.8 if is_720p else 1.0))
+                        media_size = int(self.opt_media_custom_size.get() * (1.8 if is_720p else 1.0))
                         d.thumbnail((media_size, media_size), Image.LANCZOS)
                         mx = W - d.width - int(self.opt_media_x.get())
                         my = H - d.height - int(self.opt_media_y.get())
-                        # Allow off-screen positioning for full customization (PIL alpha_composite clips off-screen parts)
                         if self.opt_media_shadow.get():
                             alpha_ch = d.split()[-1] if d.mode == 'RGBA' else None
                             shadow_layer = Image.new("RGBA", d.size, (0, 0, 0, 150))
@@ -2291,7 +2630,6 @@ class App(tk.Tk):
                     except Exception as e:
                         print(f"Additional2 image error for {file}: {e}")
 
-                # Draw order exactly as preview: description (bottom), metadata, physical(media), optional_media, additional2, additional (top)
                 _layer_drawers = {
                     "description": _draw_desc_layer,
                     "metadata": _draw_meta_layer,
@@ -2310,7 +2648,7 @@ class App(tk.Tk):
                     suffix = "-BG.png"
                 elif mode == "esde":
                     suffix = ".png"
-                else:  # custom
+                else:
                     suf = (self.custom_suffix.get() or "").strip()
                     if not suf:
                         suffix = ".png"
