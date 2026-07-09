@@ -18,10 +18,12 @@ With full drag-and-drop editing, customizable layers, textures, fonts, and layou
 ✔ 640x480 (CRT Display) and 720p output
 ✔ PNG optimization
 
-<img width="2540" height="1762" alt="GUI" src="https://github.com/user-attachments/assets/b19f9820-02f3-4f6c-ab9c-97a61f8bc8b0" />
+<img width="2565" height="1880" alt="Screenshot 2026-07-08 235213" src="https://github.com/user-attachments/assets/2e9c33f2-3783-4d96-8b11-c14a66c5df61" />
 
-<img width="640" height="480" alt="gex (usa, europe)-BG" src="https://github.com/user-attachments/assets/bc2c6235-e935-46f3-8043-495c3a131995" />
+<img width="1280" height="720" alt="metal gear solid-BG" src="https://github.com/user-attachments/assets/c9130261-4915-4c5c-8322-888d801e784d" />
 
 <img width="1280" height="720" alt="final fantasy vii-BG" src="https://github.com/user-attachments/assets/5608f157-a540-4ebb-984f-ad1a59f64155" />
 
 <img width="640" height="480" alt="adventure island (usa)-BG" src="https://github.com/user-attachments/assets/1efa4195-bdb1-49c5-a56f-5b4a640b8ca8" />
+
+<img width="640" height="480" alt="gex (usa, europe)-BG" src="https://github.com/user-attachments/assets/bc2c6235-e935-46f3-8043-495c3a131995" />
