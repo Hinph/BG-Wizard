@@ -26,4 +26,5 @@ With full drag-and-drop editing, customizable layers, textures, fonts, and layou
 
 <img width="640" height="480" alt="adventure island (usa)-BG" src="https://github.com/user-attachments/assets/1efa4195-bdb1-49c5-a56f-5b4a640b8ca8" />
 
-<img width="640" height="480" alt="gex (usa, europe)-BG" src="https://github.com/user-attachments/assets/bc2c6235-e935-46f3-8043-495c3a131995" />
+<img width="640" height="480" alt="gex (usa, europe)-BG" src="https://github.com/user-attachments/assets/e0c6d07d-7c02-4a14-b2f1-197aa6e97a6d" />
+
