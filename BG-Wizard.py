@@ -27,8 +27,8 @@ def draw_crt_text(draw, pos, text, font, fill=(255,255,255), outline=True):
 def gauge_width(raw_rating, scale=1):
     return 0 if raw_rating is None else int(88 * scale)
 
-def stars_width(rating, scale=1):
-    return 0 if rating is None else int(22 * scale) * 5
+def stars_width(rating, scale=1, spacing_mult=1.0):
+    return 0 if rating is None else int(18 * scale * spacing_mult) * 5
 
 def player_count(player_str):
     try:
@@ -37,17 +37,24 @@ def player_count(player_str):
         return 1
 
 def player_width(player_str, scale=1, use_text=False, icon_style="Classic"):
-    if use_text or icon_style == "Players as Text":
-        return 40
     p_count = player_count(player_str)
-    icon_w = int(9 * scale)
-    gap = int(4 * scale)
+    if use_text or icon_style == "Players as Text":
+        text = f"{p_count}P"
+        font_size = max(8, int(12 * scale))
+        try:
+            pfont = ImageFont.truetype(resource_path("DejaVuSans-Bold.ttf"), font_size)
+        except:
+            pfont = ImageFont.load_default()
+        meas = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+        return int(meas.textlength(text, font=pfont))
+    icon_w = int(8 * scale)
+    gap = int(3 * scale)
     if icon_style == "Custom Icon":
         icon_w = int(icon_w * 2.0)
     return (p_count * icon_w) + ((p_count - 1) * gap)
 
-def rating_width(rating, use_stars, scale=1):
-    return stars_width(rating, scale) if use_stars else gauge_width(rating, scale)
+def rating_width(rating, use_stars, scale=1, spacing_mult=1.0):
+    return stars_width(rating, scale, spacing_mult) if use_stars else gauge_width(rating, scale)
 
 def draw_gauge(draw, right_x, y, raw_rating, scale=1):
     gw = gauge_width(raw_rating, scale)
@@ -63,11 +70,11 @@ def draw_gauge(draw, right_x, y, raw_rating, scale=1):
     return gw
 
 def draw_stars(draw, right_x, y, rating, scale=1, style="Classic Filled", color=(255, 215, 0), spacing_mult=1.0):
-    sw = stars_width(rating, scale)
+    sw = stars_width(rating, scale, spacing_mult)
     if sw == 0: return 0
     stars = int(float(rating) * 5)
-    spacing = int(22 * scale * spacing_mult)
-    font_size = max(10, int(16 * scale))
+    spacing = int(18 * scale * spacing_mult)
+    font_size = max(8, int(14 * scale))
     try:
         star_font = ImageFont.truetype(resource_path("DejaVuSans-Bold.ttf"), font_size)
     except Exception:
@@ -91,22 +98,25 @@ def draw_stars(draw, right_x, y, rating, scale=1, style="Classic Filled", color=
     return sw
 
 def draw_player(draw, img, right_x, y, player_str, scale=1, use_text=False, icon_style="Classic", custom_icon_path=None):
+    p_count = player_count(player_str)
+    icon_w = int(8 * scale)
+    gap = int(3 * scale)
+    
     if use_text or icon_style == "Players as Text":
-        p_count = player_count(player_str)
         text = f"{p_count}P"
-        font_size = max(10, int(14 * scale))
+        font_size = max(8, int(12 * scale))
         try:
             pfont = ImageFont.truetype(resource_path("DejaVuSans-Bold.ttf"), font_size)
         except:
             pfont = ImageFont.load_default()
-        draw.text((right_x - 35, y-2), text, fill=(255,255,255), font=pfont)
-        return 40
-    p_count = player_count(player_str)
-    icon_w = int(9 * scale)
-    gap = int(4 * scale)
+        text_w = int(draw.textlength(text, font=pfont))
+        draw.text((right_x - text_w, y - int(2*scale)), text, fill=(255,255,255), font=pfont)
+        return text_w
+        
     total_w = (p_count * icon_w) + ((p_count - 1) * gap)
     start_x = right_x - total_w
     fill = (255, 255, 255)
+    
     if icon_style == "Custom Icon" and custom_icon_path and os.path.exists(custom_icon_path):
         try:
             custom_icon_w = int(icon_w * 2.0)
@@ -120,6 +130,7 @@ def draw_player(draw, img, right_x, y, player_str, scale=1, use_text=False, icon
             return total_w
         except Exception:
             pass
+            
     for i in range(p_count):
         x = start_x + (i * (icon_w + gap))
         if icon_style == "X":
@@ -138,7 +149,7 @@ def draw_player(draw, img, right_x, y, player_str, scale=1, use_text=False, icon
             draw.ellipse([x + 1, y + 1, x + icon_w - 1, y + icon_w - 1], outline=fill, width=max(1, int(1.5 * scale)))
         else:
             draw.ellipse([x, y, x + icon_w, y + icon_w], fill=fill)
-            draw.rectangle([x + 2, y + icon_w + 1, x + icon_w - 2, y + icon_w + 6], fill=fill)
+            draw.rectangle([x + int(1.5*scale), y + icon_w + 1, x + icon_w - int(1.5*scale), y + icon_w + int(5*scale)], fill=fill)
     return total_w
 
 def load_gamelist(xml_path):
@@ -565,8 +576,14 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
     
     if bar_height is not None:
         try:
-            min_h = int(float(bar_height) * max(0.8, float(text_scale)))
-            h = max(h, min_h)
+            requested_h = int(float(bar_height) * max(0.8, float(text_scale)))
+            
+            if vertical:
+                # Auto-height for vertical layout (nice default)
+                h = max(requested_h, 140)
+            else:
+                # Allow thin bars in normal (horizontal) mode
+                h = requested_h                     # ← override instead of max()
         except:
             pass
     
@@ -607,7 +624,10 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
                 text_y += line_height
         # Rating
         row_y = text_y + int(8 * text_scale)
-        center_x = x + w // 2
+        if vertical_labels:
+            align_x = x + value_start_x
+        else:
+            align_x = x + inner_pad
         if meta.get("rating"):
             if display_rating_as_text:
                 rt = f"{int(float(meta.get('rating', 0)) * 100)}%"
@@ -617,20 +637,20 @@ def draw_metadata_bar(img, x, y, w, meta, bar_color, border_color, border_width,
                 except Exception:
                     rfont = main_font
                 tw = meas.textlength(rt, font=rfont) if 'meas' in locals() else 50
-                draw_crt_text(td, (center_x - tw // 2, row_y), rt, rfont, fill=text_color, outline=text_outline)
+                draw_crt_text(td, (align_x, row_y), rt, rfont, fill=text_color, outline=text_outline)
             else:
                 if use_stars:
-                    sw = stars_width(meta.get("rating"), text_scale)
-                    draw_stars(td, center_x + sw // 2, row_y, meta.get("rating"), text_scale, style=star_style, color=star_color, spacing_mult=star_spacing_mult)
+                    sw = stars_width(meta.get("rating"), text_scale, star_spacing_mult)
+                    draw_stars(td, align_x + sw, row_y, meta.get("rating"), text_scale, style=star_style, color=star_color, spacing_mult=star_spacing_mult)
                 else:
                     gw = gauge_width(meta.get("rating"), text_scale)
-                    draw_gauge(td, center_x + gw // 2, row_y, meta.get("rating"), text_scale)
+                    draw_gauge(td, align_x + gw, row_y, meta.get("rating"), text_scale)
         # Player icons with MORE spacing
         if player_icon_style != "Players as Text":
             p_y = row_y + int(26 * text_scale * vertical_player_gap_mult)
             p_str = meta.get("players", "1")
             pw = player_width(p_str, text_scale, use_text=(player_icon_style == "Players as Text"), icon_style=player_icon_style)
-            draw_player(td, img, center_x + pw // 2, p_y, p_str, text_scale, use_text=False, icon_style=player_icon_style, custom_icon_path=custom_player_icon_path)
+            draw_player(td, img, align_x + pw, p_y, p_str, text_scale, use_text=False, icon_style=player_icon_style, custom_icon_path=custom_player_icon_path)
     else:
         text_y = y + (h - text_h) // 2 - text_bbox[1] if 'text' in locals() else y + inner_pad
         if 'text' in locals():
@@ -748,7 +768,7 @@ class App(tk.Tk):
         self.display_rating_as_text = tk.BooleanVar(value=False)
         self.star_style = tk.StringVar(value="Classic Filled")
         self.star_color = (255, 215, 0)
-        self.star_spacing_mult = tk.DoubleVar(value=1.0)  # NEW: star spacing control
+        self.star_spacing_mult = tk.DoubleVar(value=0.5)  # NEW: star spacing control
         self.vertical_player_gap_mult = tk.DoubleVar(value=1.15)  # NEW: extra gap in vertical between rating & players
         self.bar_shadow = tk.BooleanVar(value=True)
         self.media_shadow = tk.BooleanVar(value=True)
@@ -1117,9 +1137,9 @@ class App(tk.Tk):
         
         sf = ttk.Frame(pos_frame); sf.pack(side='left', fill='x', expand=True, padx=3)
         ttk.Label(sf, text="Height", width=7).pack(side='left')
-        self.bar_h_scale = ttk.Scale(sf, from_=20, to=300, orient="horizontal", variable=self.bar_height_var)
+        self.bar_h_scale = ttk.Scale(sf, from_=10, to=300, orient="horizontal", variable=self.bar_height_var)
         self.bar_h_scale.pack(side='left', fill='x', padx=3)
-        self.bar_h_spin = ttk.Spinbox(sf, textvariable=self.bar_height_var, from_=20, to=300, increment=5, width=7, command=self._live_update_preview)
+        self.bar_h_spin = ttk.Spinbox(sf, textvariable=self.bar_height_var, from_=10, to=300, increment=5, width=7, command=self._live_update_preview)
         self.bar_h_spin.pack(side='right', padx=2)
         self.bar_h_label = ttk.Label(sf, textvariable=self.bar_height_var, width=5)
         self.bar_h_label.pack(side='right')
@@ -1168,7 +1188,7 @@ class App(tk.Tk):
             elif var == self.bar_w:
                 val = max(200, min(val, W - 40))
             elif var == self.bar_height_var:
-                val = max(20, min(val, 400))
+                val = max(10, min(val, 400))
             var.set(int(val) if var in [self.bar_x_var, self.bar_y_var, self.bar_w, self.bar_height_var] else val)
         except:
             pass
@@ -1981,7 +2001,7 @@ class App(tk.Tk):
     def update_tab_description(self, event=None):
         current = self.notebook.tab(self.notebook.select(), "text")
         descriptions = {
-            "Paths": "v 1.2",
+            "Paths": "v 1.0.2",
             "Background": "Plain color, screenshot dim, or Custom BG Image with Stretch/Zoom/Original/Tile modes + dim. All update live in Preview.",
             "Metadata Bar": "Full styling (colors, border style/radius/padding, gradient, patterns, text scale, transparency).",
             "Description": "Only available with gamelist.xml",
@@ -2006,6 +2026,11 @@ class App(tk.Tk):
             p = filedialog.askdirectory(title=f"Select {key.upper()} Folder")
         if p:
             self.paths[key].set(p)
+            # Selecting a path should enable that source. This matters for
+            # Games Folder mode because its old checkbox was removed, but the
+            # generation code still checks the hidden path_enabled flag.
+            if key in self.path_enabled:
+                self.path_enabled[key].set(True)
             self.update_preview()
 
     def load_additional_image(self):
@@ -2382,7 +2407,11 @@ class App(tk.Tk):
         use_ss = self.path_enabled['ss'].get() and bool(self.paths['ss'].get())
         use_xml = self.path_enabled['xml'].get() and bool(self.paths['xml'].get())
         use_md = self.path_enabled['md'].get() and bool(self.paths['md'].get())
-        use_roms = self.path_enabled['roms'].get() and bool(self.paths['roms'].get())
+        # Games Folder mode should be active whenever a games folder is selected.
+        # The old enable checkbox was removed from the UI, so do not require
+        # path_enabled['roms'] here or generation can be blocked unless another
+        # media source is selected.
+        use_roms = bool(self.paths['roms'].get()) and os.path.isdir(self.paths['roms'].get())
         use_desc = self.use_description.get() and use_xml
         
         if not use_ss and not self.plain_bg.get() and not use_roms and not (self.use_custom_bg.get() and self.custom_bg_image):
@@ -2394,6 +2423,12 @@ class App(tk.Tk):
         
         games = load_gamelist(self.paths['xml'].get()) if use_xml else {}
         md_lookup = load_media_lookup(self.paths['md'].get()) if use_md else {}
+
+        # In XML/screenshot mode, the screenshot image itself is the current file.
+        # In Games Folder mode, the current file is a ROM or folder name, so any
+        # screenshot/background art must be found by matching that ROM/folder stem.
+        ss_lookup = load_media_lookup(self.paths['ss'].get()) if use_ss else {}
+
         use_optional = self.path_enabled.get("optional_media") and self.path_enabled["optional_media"].get()
         opt_lookup = {}
         if use_optional and self.paths.get("optional_media"):
@@ -2458,6 +2493,24 @@ class App(tk.Tk):
                     except Exception as e:
                         print(f"Custom BG error: {e}")
                         bg = Image.new("RGBA", (W, H), self.bg_color)
+                elif use_ss and use_roms:
+                    ss_path = find_media_image(ss_lookup, meta, base_name)
+                    if ss_path and os.path.exists(ss_path):
+                        try:
+                            bg = ImageOps.fit(Image.open(ss_path), (W, H)).convert("RGBA")
+                            bg = ImageEnhance.Brightness(bg).enhance(dim_factor)
+                        except Exception as e:
+                            print(f"Screenshot/background load error for {file}: {e}")
+                            bg = Image.new("RGBA", (W, H), self.bg_color)
+                    else:
+                        bg = Image.new("RGBA", (W, H), self.bg_color)
+                        bg_pattern_raw = self.bg_pattern.get()
+                        bg_pattern = bg_pattern_raw.lower() if bg_pattern_raw != "None" else None
+                        is_gradient = bg_pattern_raw == "Gradient"
+                        effective_pattern = "checkerboard" if bg_pattern == "checkerboard" else bg_pattern
+                        if bg_pattern or is_gradient:
+                            fill_overlay = create_fill_overlay((W, H), self.bg_color, self.bg_color2, "vertical" if is_gradient else None, None, effective_pattern)
+                            bg.alpha_composite(fill_overlay)
                 elif self.plain_bg.get() or not use_ss:
                     bg = Image.new("RGBA", (W, H), self.bg_color)
                     bg_pattern_raw = self.bg_pattern.get()
