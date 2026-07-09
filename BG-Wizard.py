@@ -647,9 +647,9 @@ class App(tk.Tk):
         self.create_background_tab()
         self.create_metadata_tab()
         self.create_description_tab()
-        self.create_additional_tab()
         self.create_media_tab()
         self.create_optional_media_tab()
+        self.create_additional_tab()
         self.create_preview_tab()
 
         # Bottom info bar (smaller)
@@ -727,7 +727,7 @@ class App(tk.Tk):
 
         # Optional Media Folder (unchecked by default, merges with Physical Media for extra artwork matches)
         f = ttk.Frame(tab1); f.pack(fill='x', padx=8, pady=6)
-        ttk.Label(f, text="Optional Media Folder (extra images; also powers new Optional Media tab for independent overlay):", style="Section.TLabel").pack(anchor='w')
+        ttk.Label(f, text="Optional Media Folder (extra images; titlescreens, miximages, boxart, fanart, etc...):", style="Section.TLabel").pack(anchor='w')
         ttk.Button(f, text="Select Optional Media Folder", command=lambda: self.pick('optional_media'), width=28).pack(side='left', padx=(0, 6))
         ttk.Label(f, textvariable=self.paths['optional_media'], relief="sunken", wraplength=380, foreground="#a0a0b0").pack(side='left', fill='x', padx=2)
         ttk.Checkbutton(f, text="", variable=self.path_enabled['optional_media'], command=lambda: self.on_path_toggle('optional_media'), width=2).pack(side='right', padx=(4, 0))
@@ -751,11 +751,11 @@ class App(tk.Tk):
         self.notebook.add(tab2, text="Background")
         ttk.Label(tab2, text="Background & Dimming", style="Section.TLabel").pack(anchor='w', padx=8, pady=(8, 4))
         f = ttk.Frame(tab2); f.pack(fill='x', padx=8, pady=4)
-        ttk.Checkbutton(f, text="Use Plain Color Background", variable=self.plain_bg).pack(side='left', padx=4)
-        ttk.Button(f, text="Pick BG Color", command=self.choose_bg, width=12).pack(side='left', padx=2)
+        ttk.Checkbutton(f, text="Use Plain or Pattern Background", variable=self.plain_bg).pack(side='left', padx=4)
+        ttk.Button(f, text="Primary Color", command=self.choose_bg, width=12).pack(side='left', padx=2)
         self.bg_swatch = tk.Label(f, text=" ", bg=self._hex(self.bg_color), relief="raised", width=3, height=1)
         self.bg_swatch.pack(side='left', padx=2)
-        ttk.Button(f, text="Color 2", command=self.choose_bg2, width=10).pack(side='left', padx=2)
+        ttk.Button(f, text="Secondary Color", command=self.choose_bg2, width=10).pack(side='left', padx=2)
         self.bg2_swatch = tk.Label(f, text=" ", bg=self._hex(self.bg_color2), relief="raised", width=3, height=1)
         self.bg2_swatch.pack(side='left', padx=2)
         
@@ -1199,7 +1199,7 @@ class App(tk.Tk):
         self.media_size.pack(padx=8, pady=2, anchor='w')
 
         ttk.Label(tab4, text="Position Offset from Bottom-Right (use arrows/entries for precision)", font=("TkDefaultFont", 9)).pack(anchor='w', padx=8, pady=(8,2))
-        for label, var, from_, to_ in [("Right Offset X", self.media_x, 0, 500), ("Bottom Offset Y", self.media_y, 0, 500)]:
+        for label, var, from_, to_ in [("Right Offset X", self.media_x, -1000, 2000), ("Bottom Offset Y", self.media_y, -1000, 2000)]:
             f = ttk.Frame(tab4); f.pack(fill='x', padx=8, pady=1)
             ttk.Label(f, text=label, width=16).pack(side='left')
             scale = ttk.Scale(f, from_=from_, to=to_, orient="horizontal", variable=var)
@@ -1230,7 +1230,7 @@ class App(tk.Tk):
     def create_optional_media_tab(self):
         tab_opt = ttk.Frame(self.notebook)
         self.notebook.add(tab_opt, text="Optional Media")
-        ttk.Label(tab_opt, text="Optional Media Overlay (from Optional Media Folder - independent positioning)", style="Section.TLabel").pack(anchor='w', padx=8, pady=6)
+        ttk.Label(tab_opt, text="Optional Media Overlay (from Optional Media Folder", style="Section.TLabel").pack(anchor='w', padx=8, pady=6)
         
         note = ttk.Label(tab_opt, text="Note: Select & enable 'Optional Media Folder' in Paths tab to use per-game images here. This is separate from Physical Media. Overlay is disabled by default until you enable the folder.", font=("TkDefaultFont", 8), foreground="#888")
         note.pack(anchor='w', padx=8, pady=2)
@@ -1244,7 +1244,7 @@ class App(tk.Tk):
         self.opt_media_size.bind("<<ComboboxSelected>>", lambda e: self.update_preview())
 
         ttk.Label(tab_opt, text="Position Offset from Bottom-Right (same as Physical Media)", font=("TkDefaultFont", 9)).pack(anchor='w', padx=8, pady=(8,2))
-        for label, var, from_, to_ in [("Right Offset X", self.opt_media_x, 0, 500), ("Bottom Offset Y", self.opt_media_y, 0, 500)]:
+        for label, var, from_, to_ in [("Right Offset X", self.opt_media_x, -1000, 2000), ("Bottom Offset Y", self.opt_media_y, -1000, 2000)]:
             f = ttk.Frame(tab_opt); f.pack(fill='x', padx=8, pady=1)
             ttk.Label(f, text=label, width=16).pack(side='left')
             scale = ttk.Scale(f, from_=from_, to=to_, orient="horizontal", variable=var)
@@ -1274,7 +1274,7 @@ class App(tk.Tk):
 
     def _update_opt_entry(self, var):
         try:
-            val = max(0, min(600, float(var.get())))
+            val = float(var.get())  # no clamp - allow completely free movement
             var.set(int(val))
         except:
             pass
@@ -1282,7 +1282,7 @@ class App(tk.Tk):
 
     def _update_media_entry(self, var):
         try:
-            val = max(0, min(600, float(var.get())))
+            val = float(var.get())  # no clamp - allow completely free movement
             var.set(int(val))
         except:
             pass
@@ -1451,16 +1451,18 @@ class App(tk.Tk):
                 self._drag_offset_y = target_y - ay
                 return
 
-        # Check Physical Media (bottom-right offset based)
+        # Check Physical Media (bottom-right offset based) - larger hit area for easier dragging
         size_preset = self.media_size.get()
         base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
         msize = int(base_size * (1.8 if is_720p else 1.0))
         mx = target_w - msize - int(self.media_x.get())
         my = target_h - msize - int(self.media_y.get())
-        if mx <= target_x <= mx + msize and my <= target_y <= my + msize:
+        tol = 30  # larger tolerance for easier dragging media elements
+        if (mx - tol) <= target_x <= (mx + msize + tol) and (my - tol) <= target_y <= (my + msize + tol):
             self._drag_element = "media"
             self._drag_offset_x = target_x - mx
             self._drag_offset_y = target_y - my
+            # No return - allow optional check if overlapping
 
         # Check Optional Media (bottom-right offset based, if enabled)
         if self.enable_optional_media.get():
@@ -1469,7 +1471,7 @@ class App(tk.Tk):
             osize = int(base_size * (1.8 if is_720p else 1.0))
             ox = target_w - osize - int(self.opt_media_x.get())
             oy = target_h - osize - int(self.opt_media_y.get())
-            if ox <= target_x <= ox + osize and oy <= target_y <= oy + osize:
+            if (ox - tol) <= target_x <= (ox + osize + tol) and (oy - tol) <= target_y <= (oy + osize + tol):
                 self._drag_element = "optional_media"
                 self._drag_offset_x = target_x - ox
                 self._drag_offset_y = target_y - oy
@@ -1499,23 +1501,23 @@ class App(tk.Tk):
             self.additional2_x.set(max(-300, min(new_x, target_w + 100)))
             self.additional2_y.set(max(-100, min(new_y, target_h + 50)))
         elif self._drag_element == "media":
-            # Media is bottom-right offset, so invert
+            # Media is bottom-right offset, so invert - allow completely free movement
             size_preset = self.media_size.get()
             base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
             msize = int(base_size * (1.8 if target_w > 700 else 1.0))
             new_mx = target_w - msize - new_x
             new_my = target_h - msize - new_y
-            self.media_x.set(max(0, min(new_mx, 600)))
-            self.media_y.set(max(0, min(new_my, 600)))
+            self.media_x.set(new_mx)
+            self.media_y.set(new_my)
         elif self._drag_element == "optional_media":
-            # Optional Media also bottom-right offset
+            # Optional Media also bottom-right offset - allow completely free movement
             size_preset = self.opt_media_size.get()
             base_size = 126 if size_preset == "Small" else 168 if size_preset == "Medium" else 224
             osize = int(base_size * (1.8 if target_w > 700 else 1.0))
             new_ox = target_w - osize - new_x
             new_oy = target_h - osize - new_y
-            self.opt_media_x.set(max(0, min(new_ox, 600)))
-            self.opt_media_y.set(max(0, min(new_oy, 600)))
+            self.opt_media_x.set(new_ox)
+            self.opt_media_y.set(new_oy)
 
         self.update_preview()  # live update while dragging
 
@@ -1586,8 +1588,7 @@ class App(tk.Tk):
             media_size = int(base_size * (1.8 if is_720p else 1.0))
             mx = target_W - media_size - int(self.media_x.get())
             my = target_H - media_size - int(self.media_y.get())
-            mx = max(10, min(mx, target_W - 20))
-            my = max(10, min(my, target_H - 20))
+            # Allow off-screen positioning for full customization (PIL will clip)
             
             d = ImageDraw.Draw(preview_img)
             overlay = Image.new("RGBA", preview_img.size, (0,0,0,0))
@@ -1612,8 +1613,7 @@ class App(tk.Tk):
             media_size = int(base_size * (1.8 if is_720p else 1.0))
             mx = target_W - media_size - int(self.opt_media_x.get())
             my = target_H - media_size - int(self.opt_media_y.get())
-            mx = max(10, min(mx, target_W - 20))
-            my = max(10, min(my, target_H - 20))
+            # Allow off-screen positioning for full customization (PIL will clip)
             
             d = ImageDraw.Draw(preview_img)
             overlay = Image.new("RGBA", preview_img.size, (0,0,0,0))
@@ -1681,7 +1681,7 @@ class App(tk.Tk):
         alpha = int(255 * self.desc_alpha_pct.get() / 100)
         draw_description_box(
             preview_img, desc_x, desc_y, desc_w, desc_h, 
-            "This is a sample description box. The text scaling and positioning work correctly in both CRT and 720p modes!",
+            "This is a sample description box. The text scaling and positioning now work correctly in both CRT and 720p modes. Enjoy the improved UI!",
             (*self.desc_rgb, alpha), self.desc_border_color, 
             self.border_width_map.get(self.border_strength.get(), 2), 
             self.border_style.get(), 
@@ -2031,7 +2031,7 @@ class App(tk.Tk):
             
             # Update info
             mode_str = "720p (1280×720)" if is_720p else "CRT (640×480)"
-            self.preview_info.config(text=f"Mode: {mode_str}  |  Preview is pixel-accurate scaled down. Bar centered by default. Generation now matches this exactly.")
+            self.preview_info.config(text=f"Mode: {mode_str}  |  Preview is pixel-accurate scaled down.")
         except Exception as e:
             print("Preview error:", e)
             import traceback
@@ -2201,8 +2201,7 @@ class App(tk.Tk):
                         d.thumbnail((media_size, media_size), Image.LANCZOS)
                         mx = W - d.width - int(self.media_x.get())
                         my = H - d.height - int(self.media_y.get())
-                        mx = max(10, min(mx, W - 20))
-                        my = max(10, min(my, H - 20))
+                        # Allow off-screen positioning for full customization (PIL alpha_composite clips off-screen parts)
                         if self.media_shadow.get():
                             alpha_ch = d.split()[-1] if d.mode == 'RGBA' else None
                             shadow_layer = Image.new("RGBA", d.size, (0, 0, 0, 160))
@@ -2227,8 +2226,7 @@ class App(tk.Tk):
                         d.thumbnail((media_size, media_size), Image.LANCZOS)
                         mx = W - d.width - int(self.opt_media_x.get())
                         my = H - d.height - int(self.opt_media_y.get())
-                        mx = max(10, min(mx, W - 20))
-                        my = max(10, min(my, H - 20))
+                        # Allow off-screen positioning for full customization (PIL alpha_composite clips off-screen parts)
                         if self.opt_media_shadow.get():
                             alpha_ch = d.split()[-1] if d.mode == 'RGBA' else None
                             shadow_layer = Image.new("RGBA", d.size, (0, 0, 0, 150))
