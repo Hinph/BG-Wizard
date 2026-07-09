@@ -1,6 +1,8 @@
 BG-Wizard is a tool designed primarily for creating custom composite background images for MiSTer FPGA frontends. It can build artwork using either an ES-DE gamelist.xml or a standard ROM folder, automatically matching games with artwork from multiple media directories (screenshots, box art, physical media, logos, title screens, and more) to generate fully customized backgrounds in large batches very quickly. It is designed primarily for use with the Superstation Console
 Mode in mind but will hopefully be useful if background support is ever added for Zaparoo Frontend as well down the line.
 
+At its most simple functions, you can set your rom folder and media image folders and click the generate button. Or you can go much deeper.
+
 When using an ES-DE gamelist.xml file as the source, BG-Wizard can also extract game metadata and seamlessly incorporate it into the final image. Information such as the release year, genre, publisher, developer, player count, and average user rating can be baked directly into the artwork.
 
 By embedding this information into the background itself, MiSTer frontends no longer need to render or process metadata in real time. This reduces the workload on the FPGA's low-powered processor, resulting in a faster, smoother browsing experience while still presenting rich game information in an attractive, highly customizable layout.
